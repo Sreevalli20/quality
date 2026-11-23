@@ -137,7 +137,7 @@ from local PM2.5 reductions.
 ## Project structure
 
 ```
-app.py                  Streamlit entry point (sidebar data loader + navigation)
+app.py                  Streamlit entry point (sidebar navigation + reading card)
 airaware/
   aqi.py                CPCB breakpoints, sub-indices, categories
   data.py               Measurement model, sample data, CSV validation/import
@@ -152,7 +152,7 @@ airaware/
   charts.py             Plotly chart helpers
   ui.py                 Design system, CSS, cards, navigation helpers
   pages.py              Page renderers for all modules
-tests/                  pytest suite (AQI, data, recommendations, impact, planner)
+tests/                  pytest suite (unit tests + AppTest page/journey tests)
 .streamlit/config.toml  Theme & server config
 requirements.txt
 README.md
@@ -170,18 +170,55 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-Open http://localhost:8501 — choose a data source in the sidebar, then
-navigate the modules.
+Open http://localhost:8501 — the **Home** page offers three guided ways to
+load a reading: *enter measurements* manually, *upload a CSV*, or *explore
+labelled sample data*. The sidebar then navigates between the nine modules;
+it always shows your current reading and its provenance.
 
 ### Try the sample data
 
-Sidebar → **Data source → Sample demonstration data** → pick a city. All
-sample readings are labelled as non-live.
+Home → **Explore demonstration data** → pick a city → *Load this sample*.
+All sample readings are labelled as non-live (`source: sample`) and a warning
+banner appears wherever they are used.
 
-### Import real data
+### Enter measurements manually
 
-Export a CPCB/state-board/OpenAQ table to CSV with pollutant columns and
-upload via **Data source → Upload CSV** or the Explorer page.
+Home or **Air Quality Explorer** → *Enter my own measurements*. Leave fields
+empty for pollutants you don't know — partial data produces a partial,
+honestly-labelled assessment rather than fabricated values. An overall AQI
+can be entered directly and is used only when no pollutant values exist.
+
+### Import real data (CSV format)
+
+Export a CPCB / state-board / OpenAQ table to CSV. One row = one observation.
+
+- **Pollutant columns** (at least one required, or an `aqi` column):
+  `pm25`/`PM2.5`, `pm10`, `no2`, `so2`, `co` (mg/m³), `o3`, `nh3` — common
+  aliases are accepted case-insensitively.
+- **Optional columns:** `aqi` (used only when no pollutant columns have
+  values for that row), `location`/`city`/`station`,
+  `timestamp`/`datetime`/`date`/`time`.
+- Limits: 2 MB, 5,000 rows. Values are range-checked; invalid cells are
+  skipped with warnings, never silently corrected.
+
+Upload via **Home → Upload my air-quality report**, or the CSV comparison
+panel inside the Explorer.
+
+### Optional Gemini configuration
+
+Create `.streamlit/secrets.toml` (git-ignored — never commit real keys):
+
+```toml
+GEMINI_API_KEY = "your-key-here"
+GEMINI_MODEL = "gemini-2.0-flash"   # optional; this is the default
+```
+
+With a valid key, **Personal AI Assistant** gains a "Generate AI briefing"
+button that sends your profile summary and top rule-based recommendations to
+the Gemini API (stdlib `urllib`, 25 s timeout). Every failure mode — missing
+key, quota, network, malformed response — falls back silently to the
+rule-based plan, and AI output is always labelled *AI-generated*. The app
+runs fully without a key.
 
 ## Testing
 
@@ -190,9 +227,11 @@ pip install pytest
 python -m pytest tests/ -v
 ```
 
-61+ tests cover AQI breakpoints, category boundaries, invalid inputs,
-CSV parsing edge cases, recommendation rules, planner logic, emission
-calculations, the optional Gemini fallback and report generation.
+128 tests cover AQI breakpoints and category-boundary edge cases (including
+fractional/user-supplied AQI), invalid inputs, CSV parsing edge cases,
+recommendation rules, planner logic, emission calculations, Gemini failure
+handling and fallback, report generation, and Streamlit AppTest smoke tests
+that exercise navigation and key journeys across all nine pages.
 
 ## Streamlit Community Cloud deployment
 

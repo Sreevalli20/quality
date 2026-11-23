@@ -58,6 +58,13 @@ def _meas() -> MeasurementSet | None:
     return st.session_state.get("measurement")
 
 
+def _flash():
+    """Show and clear a one-shot success message set before st.rerun()."""
+    msg = st.session_state.pop("flash_success", None)
+    if msg:
+        st.success(msg)
+
+
 def _require_measurement() -> bool:
     if _meas() is None:
         ui.empty_state("No air-quality reading yet. Head to **Home** and "
@@ -94,17 +101,12 @@ def _pollutant_note(p: str) -> str:
     }.get(p, "")
 
 
-def _set_measurement(m: MeasurementSet, success_msg: str):
-    m.finalize()
-    st.session_state["measurement"] = m
-    st.success(success_msg)
-
-
 # ===========================================================================
 # HOME
 # ===========================================================================
 
 def home_page():
+    _flash()
     ui.hero(
         "Breathe smarter. Live better.",
         "AirAware AI turns air-quality numbers into simple, personal "
@@ -304,10 +306,10 @@ def _manual_entry_form(prefix: str = "", apply_immediately: bool = True):
             source="user")
         ms.finalize()
         st.session_state["measurement"] = ms
+        st.session_state["flash_success"] = "Measurement saved - assessment updated."
         if apply_immediately:
             st.session_state["nav_page"] = "Air Quality Explorer"
-            st.rerun()
-        st.success("Measurement saved - see your assessment.")
+        st.rerun()
 
 
 def _csv_entry_panel():
@@ -338,6 +340,7 @@ def _csv_entry_panel():
                             key="home_csv_pick")
         if st.button("Use this observation", key="home_csv_use"):
             st.session_state["measurement"] = csv_list[pick]
+            st.session_state["flash_success"] = "Observation loaded."
             st.session_state["nav_page"] = "Air Quality Explorer"
             st.rerun()
 
@@ -353,6 +356,8 @@ def _sample_entry_panel():
     st.caption(SAMPLE_MEASUREMENTS[pick].notes)
     if st.button("Load this sample", key="home_sample_use", type="primary"):
         st.session_state["measurement"] = SAMPLE_MEASUREMENTS[pick]
+        st.session_state["flash_success"] = ("Sample demonstration data "
+                                              "loaded - not a live reading.")
         st.session_state["nav_page"] = "Air Quality Explorer"
         st.rerun()
 
@@ -362,6 +367,7 @@ def _sample_entry_panel():
 # ===========================================================================
 
 def explorer_page():
+    _flash()
     ui.hero("Air Quality Explorer",
             "A guided assessment built on the official CPCB AQI methodology. "
             "Enter what you know - partial data is handled honestly.")
@@ -558,7 +564,8 @@ def assistant_page():
 
     if not _require_measurement():
         st.button("Start an air-quality check", key="as_go_home",
-                  on_click=lambda: st.session_state.update(nav_page="Home"))
+                  on_click=lambda: st.session_state.update(
+                      nav_page="Home", home_entry="manual"))
         return
     m = _meas()
     recs = generate_recommendations(m, profile)
@@ -826,6 +833,10 @@ def impact_page():
                          step=0.5, key="imp_km")
 
     est = estimate_trip_savings(new_mode, avoided, km)
+    if est["co2e_saved_kg"] < 0:
+        st.warning("This switch would **increase** emissions versus the "
+                   "avoided mode - the estimate is shown honestly below, but "
+                   "it is not a saving.")
     ui.kpi_row([
         (f"{est['co2e_saved_kg']:.1f} kg", "CO₂e saved / trip"),
         (f"{est['fuel_saved_litres']} L" if est['fuel_saved_litres'] is not None else "-",

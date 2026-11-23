@@ -257,6 +257,12 @@ def parse_measurements_csv(file_bytes: bytes, filename: str = "upload.csv"
                 aqi_val = float(row["aqi"])
             except (TypeError, ValueError):
                 warnings.append(f"aqi row {idx + 2}: not a number, skipped")
+                aqi_val = None
+            else:
+                err = validate_aqi_value(aqi_val)
+                if err:
+                    warnings.append(f"aqi row {idx + 2}: {err}, skipped")
+                    aqi_val = None
 
         location = str(row["location"]) if "location" in df.columns and not pd.isna(row.get("location")) else "Imported location"
 

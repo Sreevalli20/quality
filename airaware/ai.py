@@ -12,7 +12,6 @@ This module is strictly optional:
 from __future__ import annotations
 
 import json
-import urllib.error
 import urllib.request
 from typing import Optional
 
@@ -77,8 +76,10 @@ def generate_text(prompt: str, max_output_tokens: int = 1200) -> Optional[str]:
         parts = data["candidates"][0]["content"]["parts"]
         text = "".join(p.get("text", "") for p in parts).strip()
         return text or None
-    except (urllib.error.URLError, urllib.error.HTTPError, KeyError,
-            IndexError, json.JSONDecodeError, TimeoutError, OSError):
+    except Exception:  # noqa: BLE001 - AI is optional; ANY failure -> fallback
+        # Covers URLError/HTTPError/TimeoutError, JSON and Unicode decode
+        # errors, unexpected payload shapes and network resets. The key is
+        # never logged or included in the error path.
         return None
 
 

@@ -121,7 +121,7 @@ def pollutant_sub_index(pollutant: str, concentration: float) -> Optional[float]
     for bp_lo, bp_hi, aqi_lo, aqi_hi in bps:
         if c <= bp_hi:
             if c <= bp_lo:
-                return float(aqi_lo) if bp_lo == 0 else aqi_lo
+                return float(aqi_lo)
             return ((aqi_hi - aqi_lo) / (bp_hi - bp_lo)) * (c - bp_lo) + aqi_lo
     # Above the worst CPCB breakpoint: extrapolate the final segment, uncapped.
     bp_lo, bp_hi, aqi_lo, aqi_hi = bps[-1]
@@ -130,9 +130,17 @@ def pollutant_sub_index(pollutant: str, concentration: float) -> Optional[float]
 
 
 def category_for(aqi: float) -> dict:
-    """Return the CPCB category dict containing the given AQI value."""
+    """Return the CPCB category dict for an AQI value.
+
+    Category bounds are integers but interpolated/user-supplied AQI can be
+    fractional (e.g. 50.5); the first category whose upper bound is >= the
+    value wins, so gap values map sensibly instead of falling through.
+    """
+    if aqi is None or not math.isfinite(float(aqi)):
+        return CATEGORIES[0]
+    value = float(aqi)
     for cat in CATEGORIES:
-        if cat["min"] <= aqi <= cat["max"]:
+        if value <= cat["max"]:
             return cat
     return CATEGORIES[-1]
 
@@ -207,9 +215,8 @@ def calculate_aqi(pollutants: dict[str, Optional[float]]) -> AqiResult:
                          pollutant_results=[], notes=notes)
 
     best = max(results, key=lambda r: r.sub_index)
-    aqi_value = min(best.sub_index, float("inf"))
     # CPCB reports AQI rounded to integer; keep one decimal for transparency.
-    aqi_rounded = round(aqi_value, 1)
+    aqi_rounded = round(best.sub_index, 1)
     cat = category_for(aqi_rounded)
     if len(results) < len(POLLUTANTS):
         notes.append(
