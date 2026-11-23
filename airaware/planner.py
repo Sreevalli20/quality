@@ -124,3 +124,21 @@ def build_daily_plan(m: MeasurementSet, outdoor_pref: str = "moderate",
 def plan_summary(plan: list[PlanItem]) -> tuple[int, int]:
     """Return (indoor_friendly_slots, total_slots) counts."""
     return sum(1 for p in plan if p.indoor_friendly), len(plan)
+
+
+def current_time_slot(hour: int | None = None) -> str:
+    """Return the slot_key covering the current local hour."""
+    if hour is None:
+        from datetime import datetime, timezone
+        hour = datetime.now(timezone.utc).astimezone().hour
+    if 6 <= hour < 9:
+        return "morning"
+    if 9 <= hour < 12:
+        return "commute_am"
+    if 12 <= hour < 17:
+        return "midday"
+    if 17 <= hour < 19:
+        return "commute_pm"
+    if 19 <= hour < 21:
+        return "evening"
+    return "night"

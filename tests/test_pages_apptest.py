@@ -121,6 +121,47 @@ class TestImpactJourney:
         assert "CO₂e vs air pollution" in text
 
 
+class TestSecurityAndLiveFetch:
+    def test_malicious_location_is_escaped(self):
+        evil = MeasurementSet(
+            location='<img src=x onerror="alert(1)">',
+            pollutants={"pm25": 120}, source="user").finalize()
+        at = _app(measurement=evil)
+        at.run()
+        html_out = "\n".join(m.value for m in at.markdown)
+        assert "<img src=x" not in html_out
+        assert "&lt;img" in html_out
+
+    def test_live_entry_hidden_without_provider(self):
+        at = _app()
+        keys = {b.key for b in at.button}
+        assert "entry_live" not in keys
+
+    def test_live_fetch_journey(self, monkeypatch):
+        from airaware import providers
+        fake = MeasurementSet(
+            location="OpenAQ Station 7", pollutants={"pm25": 90, "pm10": 140},
+            timestamp=__import__("datetime").datetime.now(
+                __import__("datetime").timezone.utc),
+            source="external", notes="Live data from OpenAQ station 'S7'")
+        fake.finalize()
+        monkeypatch.setattr(providers, "available_providers",
+                            lambda: [providers.OpenAQProvider()])
+        monkeypatch.setattr(providers.OpenAQProvider, "configured",
+                            lambda self: True)
+        monkeypatch.setattr(providers, "fetch_latest",
+                            lambda hint="": fake)
+        at = _app()
+        at.session_state["home_entry"] = "live"
+        at.run()
+        assert not at.exception
+        at.button(key="home_live_go").click().run()
+        assert not at.exception
+        m = at.session_state["measurement"]
+        assert m is not None and m.source == "external"
+        assert at.session_state["nav_page"] == "Air Quality Explorer"
+
+
 class TestPlannerAndCommunity:
     def test_plan_textareas_render(self):
         at = _app(measurement=SAMPLE_MEASUREMENTS[2])

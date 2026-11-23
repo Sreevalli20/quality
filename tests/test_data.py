@@ -1,10 +1,12 @@
-import io
 
-import pandas as pd
 import pytest
 
-from airaware.data import (MeasurementSet, parse_measurements_csv,
-                           validate_aqi_value, validate_pollutant_value)
+from airaware.data import (
+    MeasurementSet,
+    parse_measurements_csv,
+    validate_aqi_value,
+    validate_pollutant_value,
+)
 
 
 class TestValidation:

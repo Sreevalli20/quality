@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import plotly.graph_objects as go
 
-from .aqi import CATEGORIES, AqiResult, category_color
+from .aqi import AqiResult, category_color
 
 __all__ = ["category_color"]
 

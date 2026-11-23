@@ -2,21 +2,33 @@
 
 from __future__ import annotations
 
+import html
 from datetime import datetime, timezone
 
 import pandas as pd
 import streamlit as st
 
-from . import ai, charts, report, ui
-from .aqi import POLLUTANTS, is_outdoor_safe
+from . import ai, charts, providers, report, ui
 from .alerts import evaluate_alerts
-from .data import (INDIAN_CITIES, SAMPLE_MEASUREMENTS, MeasurementSet,
-                   parse_measurements_csv)
+from .aqi import POLLUTANTS, is_outdoor_safe
+from .data import (
+    INDIAN_CITIES,
+    SAMPLE_MEASUREMENTS,
+    MeasurementSet,
+    measurement_fingerprint,
+    parse_measurements_csv,
+)
+from .impact import (
+    VEHICLE_FACTORS,
+    ImpactAction,
+    actions_to_csv,
+    estimate_ac_savings,
+    estimate_trip_savings,
+    summarise_actions,
+)
 from .indoor import BUDGET_TIERS, ROOMS, ventilation_advice
-from .impact import (VEHICLE_FACTORS, actions_to_csv, estimate_ac_savings,
-                     estimate_trip_savings, summarise_actions, ImpactAction)
 from .lifestyle import all_options, options_by_area, personalised_options
-from .planner import build_daily_plan
+from .planner import build_daily_plan, current_time_slot
 from .recommendations import UserProfile, generate_recommendations
 
 GROUP_LABELS = {
@@ -87,6 +99,8 @@ def _provenance_warning(m: MeasurementSet):
         st.caption("Source: measurement you entered.")
     elif m.source == "import":
         st.caption(f"Source: {m.notes}.")
+    elif m.source == "external":
+        st.caption(f"Source: {m.source_label}. {m.notes}")
 
 
 def _pollutant_note(p: str) -> str:
@@ -143,7 +157,6 @@ def home_page():
     entry = st.session_state.get("home_entry")
 
     if entry is None:
-        cols = st.columns(3)
         choices = [
             ("Enter my own measurements",
              "Type PM2.5, PM10 or AQI values you already have",
@@ -155,6 +168,13 @@ def home_page():
              "Try realistic sample readings - always labelled as samples",
              "sample"),
         ]
+        if providers.available_providers():
+            choices.append(
+                ("Fetch live monitoring data",
+                 "Pull the freshest reading from a configured provider "
+                 "(timestamped and labelled with its source)",
+                 "live"))
+        cols = st.columns(len(choices))
         for col, (label, desc, val) in zip(cols, choices):
             with col:
                 ui.card(label, body_html=f"<p>{desc}</p>", variant="cta")
@@ -265,6 +285,8 @@ def _entry_panel(entry: str):
         _csv_entry_panel()
     elif entry == "sample":
         _sample_entry_panel()
+    elif entry == "live":
+        _live_entry_panel()
 
 
 def _manual_entry_form(prefix: str = "", apply_immediately: bool = True):
@@ -343,6 +365,37 @@ def _csv_entry_panel():
             st.session_state["flash_success"] = "Observation loaded."
             st.session_state["nav_page"] = "Air Quality Explorer"
             st.rerun()
+
+
+def _live_entry_panel():
+    """Fetch the freshest reading from a configured live provider."""
+    st.markdown("**Fetch live monitoring data**")
+    st.caption("Reads the newest real measurement from a configured "
+               "provider (currently OpenAQ). The result keeps its own "
+               "timestamp and station name - if the freshest available "
+               "reading is old, that is stated plainly rather than "
+               "presented as current.")
+    hint = st.text_input(
+        "City or station name (optional - blank uses the most recently "
+        "updated station)", key="home_live_city",
+        placeholder="e.g. Delhi")
+    provs = providers.available_providers()
+    st.caption("Active provider(s): "
+               + ", ".join(p.name for p in provs))
+    if st.button("Fetch latest reading", key="home_live_go",
+                 type="primary"):
+        with st.spinner("Querying provider..."):
+            m = providers.fetch_latest(hint)
+        if m is None:
+            st.error("No provider returned usable data right now. Check "
+                     "the provider status on the About page, or use manual "
+                     "entry / CSV import instead.")
+            return
+        st.session_state["measurement"] = m
+        st.session_state["flash_success"] = (
+            f"Live reading loaded from {m.notes.split(';')[0]}.")
+        st.session_state["nav_page"] = "Air Quality Explorer"
+        st.rerun()
 
 
 def _sample_entry_panel():
@@ -555,6 +608,8 @@ def assistant_page():
             concerns=[con_map[c] for c in concerns],
             budget=bud_map[budget], priority=pri_map[priority])
         st.session_state.pop("ai_text", None)
+        st.session_state.pop("ai_text_for", None)
+        st.session_state.pop("ai_text_provider", None)
 
     profile: UserProfile | None = st.session_state.get("profile")
     if profile is None:
@@ -571,9 +626,10 @@ def assistant_page():
     recs = generate_recommendations(m, profile)
 
     ui.card("Your situation",
-            body_html=f"<p>{profile.summary()}</p>"
-                     f"<p>Outdoor activity: {outdoor} · Budget: {budget} · "
-                     f"Priority: {priority}</p>")
+            body_html=f"<p>{html.escape(profile.summary())}</p>"
+                     f"<p>Outdoor activity: {html.escape(outdoor)} · "
+                     f"Budget: {html.escape(budget)} · "
+                     f"Priority: {html.escape(priority)}</p>")
 
     for group, label in GROUP_LABELS.items():
         items = recs.get(group, [])
@@ -601,41 +657,58 @@ def assistant_page():
                 f'</div>', unsafe_allow_html=True)
         ui.hr()
 
-    # ---------- optional Gemini enhancement ----------
+    # ---------- optional AI enhancement ----------
     st.markdown("**A warmer explanation (optional)**")
-    if ai.gemini_configured():
-        st.caption("Gemini API key detected in secrets. The button below "
-                   "sends your profile summary and top recommendations to "
-                   "Google's Gemini API for a narrative briefing. Output is "
-                   "clearly labelled as AI-generated.")
+    provider = ai.get_provider()
+    if provider is not None:
+        model_label = getattr(provider, "model", lambda: provider.name)()
+        st.caption(f"AI provider detected ({provider.name}"
+                   + (f", model {model_label}" if model_label else "")
+                   + "). The button below sends your profile summary and "
+                   "top recommendations to the provider's API for a "
+                   "narrative briefing. Output is clearly labelled as "
+                   "AI-generated and is HTML-escaped before display.")
+        # Fingerprint of the inputs the briefing was generated from, so a
+        # stale briefing is never shown for a different reading/profile.
+        fp = (measurement_fingerprint(m), profile.summary())
         if st.button("Generate AI briefing", key="ai_gen"):
             top = [r.title + " - " + r.detail
                    for items in recs.values() for r in items[:3]]
             prompt = ai.build_assistant_prompt(
                 f"AQI {m.display_aqi:.0f} ({m.category_name}) at {m.location}; "
-                f"source: {m.source_label}",
+                f"source: {m.source_label}; timestamp: "
+                f"{m.timestamp.strftime('%Y-%m-%d %H:%M UTC')}",
                 profile.summary(), top)
-            with st.spinner("Asking Gemini..."):
-                text = ai.generate_text(prompt)
+            with st.spinner(f"Asking {provider.name}..."):
+                text = provider.generate(prompt)
             if text:
                 st.session_state["ai_text"] = text
+                st.session_state["ai_text_for"] = fp
+                st.session_state["ai_text_provider"] = provider.name
             else:
-                st.warning("Gemini did not respond (network, quota or "
-                           "configuration). Your rule-based plan above is "
-                           "unaffected.")
-        if st.session_state.get("ai_text"):
+                st.warning(f"{provider.name} did not respond (network, "
+                           "quota or configuration). Your rule-based plan "
+                           "above is unaffected.")
+        ai_text = st.session_state.get("ai_text")
+        if ai_text and st.session_state.get("ai_text_for") == fp:
             st.markdown(
                 '<div class="aw-card" style="border-left:4px solid #7c3aed">'
-                '<h4>AI-generated briefing · Gemini</h4>'
-                f'<p style="white-space:pre-wrap">{st.session_state["ai_text"]}</p>'
-                '<p class="aw-meta">Generated by Google Gemini from your '
+                f'<h4>AI-generated briefing · '
+                f'{html.escape(st.session_state.get("ai_text_provider", provider.name))}</h4>'
+                f'<p style="white-space:pre-wrap">'
+                f'{html.escape(ai_text)}</p>'
+                '<p class="aw-meta">Generated by an AI model from your '
                 'profile and the rule-based recommendations. Verify health '
                 'decisions with a professional.</p></div>',
                 unsafe_allow_html=True)
+        elif ai_text:
+            st.info("A briefing was generated for different inputs (reading "
+                    "or profile changed). Regenerate it to match the "
+                    "current data.")
     else:
         st.caption("_Rule-based guidance only._ Add `GEMINI_API_KEY` to "
-                   "`.streamlit/secrets.toml` to optionally enable a "
-                   "Gemini-written narrative briefing. Everything above "
+                   "`.streamlit/secrets.toml` to optionally enable an "
+                   "AI-written narrative briefing. Everything above "
                    "works without it.")
 
     # ---------- personal report ----------
@@ -679,26 +752,33 @@ def planner_page():
 
     key = "daily_plan"
     # rebuild when there is no plan, an explicit regenerate was requested,
-    # or the underlying measurement changed
-    meas_changed = st.session_state.get("plan_meas_id") != id(m)
+    # or the underlying measurement changed (fingerprint survives
+    # session-state serialisation, unlike id(m))
+    meas_fp = measurement_fingerprint(m)
+    meas_changed = st.session_state.get("plan_meas_fp") != meas_fp
     if (key not in st.session_state or st.session_state.get("plan_regen")
             or meas_changed):
         st.session_state[key] = {p.slot_key: p.guidance for p in plan}
         st.session_state["plan_regen"] = False
-        st.session_state["plan_meas_id"] = id(m)
+        st.session_state["plan_meas_fp"] = meas_fp
 
     c1, c2 = st.columns([1, 4])
     c1.button("Regenerate from current reading", key="plan_reset",
               on_click=lambda: st.session_state.update(plan_regen=True))
+    st.caption("“now” marks whichever time-of-day slot contains the current "
+               "hour - guidance itself still reflects today's reading, "
+               "not an hourly forecast.")
 
     slot_icons = {
         "morning": "MORNING", "commute_am": "AM TRAVEL",
         "midday": "MIDDAY", "commute_pm": "PM TRAVEL",
         "evening": "EVENING", "night": "NIGHT",
     }
+    now_slot = current_time_slot()
     for p in plan:
+        marker = " · now" if p.slot_key == now_slot else ""
         edited = st.text_area(
-            f"{slot_icons.get(p.slot_key, p.slot_label)} — {p.focus}",
+            f"{slot_icons.get(p.slot_key, p.slot_label)} — {p.focus}{marker}",
             value=st.session_state[key].get(p.slot_key, p.guidance),
             key=f"plan_{p.slot_key}", height=64)
         st.session_state[key][p.slot_key] = edited
@@ -980,7 +1060,7 @@ def community_page():
         plan_state = st.session_state.get("daily_plan", {})
         for p in plan:
             st.markdown(f"- **{p.slot_label}:** "
-                        f"{plan_state.get(p.slot_key, p.guidance)}")
+                        f"{html.escape(plan_state.get(p.slot_key, p.guidance))}")
     else:
         st.caption("Load a reading on Home to see today's family plan.")
 
@@ -1008,13 +1088,35 @@ def about_page():
         "(101-200) · Poor (201-300) · Very Poor (301-400) · Severe "
         "(401-500) · Severe+ (>500).")
 
+    st.markdown("### Live data providers")
+    status = providers.provider_status()
+    if status:
+        for s in status:
+            if s["configured"] and s["health"] and s["health"]["ok"]:
+                st.caption(f"- **{s['name']}**: configured - "
+                           f"{s['health']['detail']}")
+            elif s["configured"]:
+                st.warning(f"- **{s['name']}**: configured but unhealthy - "
+                           f"{(s['health'] or {}).get('detail', 'unreachable')}")
+            else:
+                st.caption(f"- **{s['name']}**: not configured "
+                           f"(set `{s['name'].upper()}_API_KEY` in secrets to enable)")
+    else:
+        st.caption("No live providers configured. Add `OPENAQ_API_KEY` to "
+                   "`.streamlit/secrets.toml` to enable live fetches; "
+                   "everything else works without it.")
+    st.caption("Live fetches appear on Home under 'Fetch live monitoring "
+               "data' and always carry the provider's own timestamp and "
+               "station name. Stale readings are labelled, never passed "
+               "off as current.")
+
     st.markdown("### Data sources & provenance")
     st.markdown(
         "- **Your entries** - treated as user-provided, unverified.\n"
         "- **CSV imports** - parsed and validated locally; nothing uploaded.\n"
         "- **Sample data** - illustrative demo values, always labelled.\n"
-        "- **No live feed is bundled** - for live data, import official "
-        "CPCB/state-board/OpenAQ exports as CSV.\n\n"
+        "- **Live provider data** - fetched on demand from configured "
+        "providers (OpenAQ), timestamped and station-attributed.\n\n"
         "Every measurement records value, unit, source and timestamp.")
 
     st.markdown("### Recommendation methodology")
@@ -1024,10 +1126,10 @@ def about_page():
         "actionable guidance. Every item shows what to do, why it matters, "
         "when, approximate cost and an alternative where meaningful.\n\n"
         "**Optional AI:** if `GEMINI_API_KEY` is configured in Streamlit "
-        "secrets, a Gemini model can rewrite the briefing in natural "
-        "language. Output is always labelled *AI-generated*; without the "
-        "key, the rule engine alone powers the app. No other AI service is "
-        "used or claimed.")
+        "secrets, an AI provider (Gemini) can rewrite the briefing in "
+        "natural language. Output is always labelled *AI-generated*; without "
+        "the key, the rule engine alone powers the app. No other AI service "
+        "is used or claimed.")
 
     st.markdown("### Impact calculation assumptions")
     st.markdown(
@@ -1045,7 +1147,8 @@ def about_page():
 
     st.markdown("### Limitations & future work")
     st.markdown(
-        "- No live monitoring feed (deliberate - no fabricated data).\n"
+        "- Live fetch requires a provider API key; without one the app "
+        "relies on manual entry, CSV import or labelled samples.\n"
         "- Recommendations are rule-based, not ML-personalised.\n"
         "- Indoor guidance is qualitative; a real PM2.5 sensor would enable "
         "quantitative tracking.\n"

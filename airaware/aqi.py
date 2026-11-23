@@ -15,8 +15,8 @@ Reference: CPCB National Air Quality Index (NAQI) methodology.
 from __future__ import annotations
 
 import math
-
 from dataclasses import dataclass, field
+from itertools import pairwise
 from typing import Optional
 
 # CPCB pollutant definitions: (display name, unit, averaging period)
@@ -103,8 +103,8 @@ def pollutant_sub_index(pollutant: str, concentration: float) -> Optional[float]
     """Return the AQI sub-index for one pollutant concentration.
 
     Returns None for unknown pollutants or invalid (negative/NaN) values.
-    Concentrations above the worst breakpoint extrapolate the last segment
-    and are capped at AQI 500-equivalent scale (Severe+ displays separately).
+    Concentrations above the worst breakpoint extrapolate the final segment
+    uncapped; values beyond AQI 500 display in the "Severe+" category.
     """
     if pollutant not in _BREAKPOINTS:
         return None
@@ -117,16 +117,25 @@ def pollutant_sub_index(pollutant: str, concentration: float) -> Optional[float]
     if c < 0 or math.isnan(c) or math.isinf(c):
         return None
 
-    bps = _BREAKPOINTS[pollutant]
-    for bp_lo, bp_hi, aqi_lo, aqi_hi in bps:
-        if c <= bp_hi:
-            if c <= bp_lo:
-                return float(aqi_lo)
-            return ((aqi_hi - aqi_lo) / (bp_hi - bp_lo)) * (c - bp_lo) + aqi_lo
+    # Piecewise-linear curve through every breakpoint corner point.
+    # CPCB bands are declared as integer ranges (e.g. 0-30, 31-60) leaving
+    # 1-unit gaps; interpolating continuously across the corners avoids the
+    # artificial AQI jumps a band-wise lookup would produce (e.g. PM2.5
+    # 30.0 -> 50 but 30.01 -> 51).
+    pts: list[tuple[float, float]] = []
+    for bp_lo, bp_hi, aqi_lo, aqi_hi in _BREAKPOINTS[pollutant]:
+        pts.append((float(bp_lo), float(aqi_lo)))
+        pts.append((float(bp_hi), float(aqi_hi)))
+    if c <= pts[0][0]:
+        return pts[0][1]
+    for (x0, y0), (x1, y1) in pairwise(pts):
+        if c <= x1:
+            if x1 == x0:
+                return y1
+            return y0 + (y1 - y0) * (c - x0) / (x1 - x0)
     # Above the worst CPCB breakpoint: extrapolate the final segment, uncapped.
-    bp_lo, bp_hi, aqi_lo, aqi_hi = bps[-1]
-    slope = (aqi_hi - aqi_lo) / (bp_hi - bp_lo)
-    return slope * (c - bp_hi) + aqi_hi
+    (x0, y0), (x1, y1) = pts[-2], pts[-1]
+    return y1 + (y1 - y0) / (x1 - x0) * (c - x1)
 
 
 def category_for(aqi: float) -> dict:

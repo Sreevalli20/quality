@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import html
+
 import streamlit as st
 
 from .aqi import category_color
@@ -85,13 +87,18 @@ def apply_css():
 
 
 def hero(title: str, subtitle: str = "", extra: str = "", art: bool = False):
-    """Premium hero block. art=True adds a decorative SVG landscape."""
+    """Premium hero block. art=True adds a decorative SVG landscape.
+
+    ``title`` and ``subtitle`` are HTML-escaped; ``extra`` is trusted
+    internal markup only - never pass user data through it.
+    """
     illustration = ""
     if art:
         illustration = _HERO_ART
     st.markdown(
         f'<div class="aw-hero"><div class="aw-hero-grid">'
-        f'<div><h1>{title}</h1><p class="aw-sub">{subtitle}</p>{extra}</div>'
+        f'<div><h1>{html.escape(title)}</h1>'
+        f'<p class="aw-sub">{html.escape(subtitle)}</p>{extra}</div>'
         f'{illustration}</div></div>',
         unsafe_allow_html=True)
 
@@ -112,7 +119,7 @@ _HERO_ART = """
 
 
 def section_title(title: str):
-    st.markdown(f'<div class="aw-section-title">{title}</div>',
+    st.markdown(f'<div class="aw-section-title">{html.escape(title)}</div>',
                 unsafe_allow_html=True)
 
 
@@ -121,29 +128,33 @@ def card(title: str, body_html: str = "", body_text: str = "",
     cls = "aw-card"
     if variant:
         cls += f" aw-card--{variant}"
-    html = f'<div class="{cls}"><h4>{title}</h4>'
+    out = f'<div class="{cls}"><h4>{html.escape(title)}</h4>'
     if body_html:
-        html += body_html
+        out += body_html
     if body_text:
-        html += f"<p>{body_text}</p>"
-    html += "</div>"
-    st.markdown(html, unsafe_allow_html=True)
+        out += f"<p>{html.escape(body_text)}</p>"
+    out += "</div>"
+    st.markdown(out, unsafe_allow_html=True)
 
 
 def badge(text: str, aqi_category: str | None = None, color: str | None = None):
     c = color or (category_color(aqi_category) if aqi_category else "#475569")
-    st.markdown(f'<span class="aw-badge" style="background:{c}">{text}</span>',
-                unsafe_allow_html=True)
+    st.markdown(
+        f'<span class="aw-badge" style="background:{c}">'
+        f'{html.escape(text)}</span>',
+        unsafe_allow_html=True)
 
 
 def meta(text: str):
-    st.markdown(f'<div class="aw-meta">{text}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="aw-meta">{html.escape(text)}</div>',
+                unsafe_allow_html=True)
 
 
 def kpi_row(items: list[tuple[str, str]]):
-    """items: list of (big_value, small_label)."""
+    """items: list of (big_value, small_label); both are HTML-escaped."""
     cells = "".join(
-        f'<div class="aw-kpi"><div class="v">{v}</div><div class="l">{l}</div></div>'
+        f'<div class="aw-kpi"><div class="v">{html.escape(str(v))}</div>'
+        f'<div class="l">{html.escape(str(l))}</div></div>'
         for v, l in items)
     st.markdown(f'<div class="aw-grid">{cells}</div>', unsafe_allow_html=True)
 
@@ -165,8 +176,8 @@ def alert_box(severity: str, title: str, detail: str):
     c = colors.get(severity, "#475569")
     st.markdown(
         f'<div class="aw-card" style="border-left:4px solid {c}">'
-        f'<h4>{labels.get(severity, severity)}: {title}</h4>'
-        f'<p>{detail}</p></div>', unsafe_allow_html=True)
+        f'<h4>{labels.get(severity, severity)}: {html.escape(title)}</h4>'
+        f'<p>{html.escape(detail)}</p></div>', unsafe_allow_html=True)
 
 
 def goto(page: str):
@@ -176,8 +187,8 @@ def goto(page: str):
 
 
 def field_label(text: str, hint: str = ""):
-    h = f'<div class="aw-hint">{hint}</div>' if hint else ""
-    st.markdown(f'<div class="aw-field-label">{text}</div>{h}',
+    h = f'<div class="aw-hint">{html.escape(hint)}</div>' if hint else ""
+    st.markdown(f'<div class="aw-field-label">{html.escape(text)}</div>{h}',
                 unsafe_allow_html=True)
 
 

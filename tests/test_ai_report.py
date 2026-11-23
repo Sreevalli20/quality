@@ -6,7 +6,7 @@ import urllib.error
 import pytest
 
 from airaware import ai, report
-from airaware.data import MeasurementSet, SAMPLE_MEASUREMENTS
+from airaware.data import SAMPLE_MEASUREMENTS, MeasurementSet
 from airaware.recommendations import UserProfile, generate_recommendations
 
 

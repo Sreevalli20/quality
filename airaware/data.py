@@ -14,7 +14,7 @@ from typing import Optional
 
 import pandas as pd
 
-from .aqi import MAX_REASONABLE, POLLUTANTS, calculate_aqi, AqiResult
+from .aqi import MAX_REASONABLE, POLLUTANTS, AqiResult, calculate_aqi
 
 MAX_CSV_BYTES = 2 * 1024 * 1024  # 2 MB upload limit
 MAX_CSV_ROWS = 5000
@@ -37,14 +37,18 @@ class MeasurementSet:
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     source: str = "user"
     notes: str = ""
+    # True when the timestamp was synthesised (e.g. CSV row had none) rather
+    # than read from the data - used for dedupe and honest provenance.
+    synthetic_timestamp: bool = False
     result: Optional[AqiResult] = field(default=None, repr=False)
 
-    def finalize(self) -> "MeasurementSet":
+    def finalize(self) -> MeasurementSet:
         """Compute AQI from pollutants (preferred) or use supplied AQI."""
         if self.pollutants:
             self.result = calculate_aqi(self.pollutants)
         elif self.aqi is not None:
             import math
+
             from .aqi import category_for
             if not math.isfinite(float(self.aqi)) or float(self.aqi) < 0:
                 self.aqi = None
@@ -167,25 +171,77 @@ def validate_aqi_value(aqi: float) -> Optional[str]:
 # CSV import
 # ---------------------------------------------------------------------------
 
-# Accepted column-name aliases (case-insensitive, punctuation-insensitive)
-_COLUMN_ALIASES: dict[str, str] = {
-    "pm25": "pm25", "pm2.5": "pm25", "pm2_5": "pm25", "pm25_ugm3": "pm25",
-    "pm25ugm3": "pm25", "pm25 (ug/m3)": "pm25",
-    "pm10": "pm10", "pm10_ugm3": "pm10", "pm10ugm3": "pm10",
-    "no2": "no2", "no2_ugm3": "no2", "nitrogen dioxide": "no2",
-    "so2": "so2", "so2_ugm3": "so2", "sulphur dioxide": "so2", "sulfur dioxide": "so2",
-    "co": "co", "co_mgm3": "co", "co (mg/m3)": "co", "carbon monoxide": "co",
-    "o3": "o3", "o3_ugm3": "o3", "ozone": "o3",
-    "nh3": "nh3", "nh3_ugm3": "nh3", "ammonia": "nh3",
-    "aqi": "aqi", "air quality index": "aqi", "naqi": "aqi",
-    "location": "location", "city": "location", "station": "location",
-    "timestamp": "timestamp", "datetime": "timestamp", "date": "timestamp",
-    "time": "timestamp",
-}
+# Header normalisation: lowercase, unify micro/mu and superscripts, then
+# drop every character that is not a-z/0-9. This makes matching insensitive
+# to case, whitespace, punctuation and common unit spellings, e.g.
+# "PM2.5", "PM 2.5", "PM2.5 (µg/m3)", "pm2_5_ugm3" all reduce consistently.
+_HEADER_TRANS = str.maketrans({
+    "µ": "u", "μ": "u", "³": "3", "²": "2", "°": "",
+})
 
 
 def _normalise_header(name: str) -> str:
-    return str(name).strip().lower()
+    s = str(name).strip().lower().translate(_HEADER_TRANS)
+    return "".join(ch for ch in s if ch.isascii() and ch.isalnum())
+
+
+# Canonical pollutant columns. Keys are _normalise_header() output.
+# Values: canonical field name ('pm25', 'location', 'timestamp', ...).
+_COLUMN_ALIASES_RAW: dict[str, str] = {
+    # PM2.5
+    "pm25": "pm25", "pm25ugm3": "pm25", "pm25mgm3": "pm25",
+    "pm25ug": "pm25",
+    # PM10
+    "pm10": "pm10", "pm10ugm3": "pm10", "pm10mgm3": "pm10",
+    # NO2
+    "no2": "no2", "no2ugm3": "no2", "no2mgm3": "no2",
+    "nitrogendioxide": "no2",
+    # SO2
+    "so2": "so2", "so2ugm3": "so2", "so2mgm3": "so2",
+    "sulphurdioxide": "so2", "sulfurdioxide": "so2",
+    # CO (canonical unit mg/m3)
+    "co": "co", "comgm3": "co", "cougm3": "co", "coug": "co",
+    "carbonmonoxide": "co",
+    # O3
+    "o3": "o3", "o3ugm3": "o3", "o3mgm3": "o3", "ozone": "o3",
+    # NH3
+    "nh3": "nh3", "nh3ugm3": "nh3", "nh3mgm3": "nh3", "ammonia": "nh3",
+    # AQI
+    "aqi": "aqi", "airqualityindex": "aqi", "naqi": "aqi",
+    # provenance columns
+    "location": "location", "city": "location", "station": "location",
+    "stationname": "location", "areaname": "location",
+    "timestamp": "timestamp", "datetime": "timestamp", "date": "timestamp",
+    "time": "timestamp", "lastupdated": "timestamp", "updated": "timestamp",
+    "utcts": "timestamp", "utcts_epoch": "timestamp_epoch",
+}
+
+# Columns whose values are in a NON-canonical unit and must be converted.
+# Maps normalised header -> (pollutant, multiplier to canonical unit).
+# CPCB canonical units: PM2.5/PM10/NO2/SO2/O3/NH3 in ug/m3, CO in mg/m3.
+_UNIT_CONVERSIONS_RAW: dict[str, tuple[str, float]] = {
+    "pm25mgm3": ("pm25", 1000.0), "pm10mgm3": ("pm10", 1000.0),
+    "no2mgm3": ("no2", 1000.0), "so2mgm3": ("so2", 1000.0),
+    "o3mgm3": ("o3", 1000.0), "nh3mgm3": ("nh3", 1000.0),
+    "cougm3": ("co", 0.001), "coug": ("co", 0.001),
+    "no2ppm": ("no2", None), "coppm": ("co", None),  # placeholder, handled below
+}
+
+# ppm -> ug/m3 conversion needs temperature/pressure; CPCB breakpoints are
+# mass-based, so ppm columns are rejected with a clear warning instead of
+# being silently misconverted.
+
+_COLUMN_ALIASES: dict[str, str] = {
+    _normalise_header(k): v for k, v in _COLUMN_ALIASES_RAW.items()}
+_UNIT_CONVERSIONS: dict[str, tuple[str, float]] = {
+    k: v for k, v in _UNIT_CONVERSIONS_RAW.items() if v[1] is not None}
+_REJECTED_UNIT_HEADERS = {k for k, v in _UNIT_CONVERSIONS_RAW.items()
+                          if v[1] is None}
+
+# A row fingerprint for duplicate detection.
+def _row_key(location: str, ts, pollutants: dict) -> tuple:
+    return (location.strip().lower(), ts,
+            tuple(sorted((k, round(v, 4)) for k, v in pollutants.items())))
 
 
 def parse_measurements_csv(file_bytes: bytes, filename: str = "upload.csv"
@@ -201,9 +257,13 @@ def parse_measurements_csv(file_bytes: bytes, filename: str = "upload.csv"
     if not file_bytes:
         raise ValueError("Uploaded file is empty.")
 
+    bad_rows: list[list[str]] = []
     try:
-        df = pd.read_csv(io.BytesIO(file_bytes), on_bad_lines="skip")
-    except Exception as exc:  # noqa: BLE001 - surface a friendly message
+        # python engine lets us COUNT malformed rows instead of silently
+        # dropping them; the row cap keeps the slower engine cheap enough.
+        df = pd.read_csv(io.BytesIO(file_bytes), engine="python",
+                         on_bad_lines=bad_rows.append)
+    except Exception as exc:  # surface a friendly message
         raise ValueError(f"Could not parse CSV: {exc}") from exc
 
     if df.empty:
@@ -211,35 +271,79 @@ def parse_measurements_csv(file_bytes: bytes, filename: str = "upload.csv"
     if len(df) > MAX_CSV_ROWS:
         raise ValueError(f"CSV has {len(df)} rows; limit is {MAX_CSV_ROWS}.")
 
-    # Map headers to canonical field names
-    rename: dict[str, str] = {}
-    for col in df.columns:
-        key = _normalise_header(col)
-        if key in _COLUMN_ALIASES:
-            rename[col] = _COLUMN_ALIASES[key]
-    df = df.rename(columns=rename)
+    # Duplicate column labels would make positional lookups ambiguous;
+    # keep only the first occurrence of each label.
+    df = df.loc[:, ~df.columns.duplicated(keep="first")]
 
-    pollutant_cols = [c for c in POLLUTANTS if c in df.columns]
-    has_aqi = "aqi" in df.columns
-    if not pollutant_cols and not has_aqi:
+    # Map columns to canonical fields, keeping POSITIONS so duplicate or
+    # oddly-cased labels can never be confused. Two passes: standard-unit
+    # columns first, then unit-variant columns only for pollutants not
+    # already covered (a real "pm25" column beats "pm25_mgm3").
+    pollutant_cols: dict[str, tuple[int, float]] = {}
+    simple_cols: dict[str, int] = {}
+    ignored_unit_cols: set[str] = set()
+
+    def _scan(unit_variants: bool):
+        for pos, col in enumerate(df.columns):
+            key = _normalise_header(col)
+            if key in _REJECTED_UNIT_HEADERS:
+                ignored_unit_cols.add(str(col))
+                continue
+            conv = _UNIT_CONVERSIONS.get(key)
+            if conv and unit_variants:
+                p, factor = conv
+                pollutant_cols.setdefault(p, (pos, factor))
+                continue
+            canon = _COLUMN_ALIASES.get(key)
+            if canon is None or (conv and not unit_variants):
+                continue
+            if canon in POLLUTANTS:
+                if unit_variants:
+                    continue  # unit variants handled above
+                pollutant_cols.setdefault(canon, (pos, 1.0))
+            else:
+                simple_cols.setdefault(canon, pos)
+
+    _scan(unit_variants=False)
+    _scan(unit_variants=True)
+
+    aqi_col = simple_cols.get("aqi")
+    location_col = simple_cols.get("location")
+    ts_col = simple_cols.get("timestamp")
+
+    if not pollutant_cols and aqi_col is None:
+        extra = ""
+        if ignored_unit_cols:
+            extra = (" Ignored non-mass-unit column(s): "
+                     f"{', '.join(sorted(ignored_unit_cols))} - CPCB AQI "
+                     "requires ug/m3 (CO: mg/m3).")
         raise ValueError(
             "CSV must contain at least one recognised pollutant column "
             "(pm25, pm10, no2, so2, co, o3, nh3) or an 'aqi' column. "
-            f"Found columns: {', '.join(df.columns)}"
+            f"Found columns: {', '.join(str(c) for c in df.columns)}.{extra}"
         )
 
     measurements: list[MeasurementSet] = []
     warnings: list[str] = []
+    if bad_rows:
+        warnings.append(f"{len(bad_rows)} malformed line(s) skipped "
+                        "(wrong number of fields).")
+    if ignored_unit_cols:
+        warnings.append(
+            f"Ignored column(s) with non-mass units that cannot be "
+            f"converted safely: {', '.join(sorted(ignored_unit_cols))}. "
+            "CPCB AQI requires ug/m3 (CO: mg/m3).")
 
+    missing_ts = naive_ts = 0
     for idx, row in df.iterrows():
         pollutants: dict[str, float] = {}
         invalid: list[str] = []
-        for p in pollutant_cols:
-            raw = row.get(p)
+        for p, (pos, factor) in pollutant_cols.items():
+            raw = row.iloc[pos]
             if pd.isna(raw):
                 continue
             try:
-                v = float(raw)
+                v = round(float(raw) * factor, 6)
             except (TypeError, ValueError):
                 invalid.append(f"{POLLUTANTS[p]['name']} row {idx + 2}")
                 continue
@@ -252,9 +356,9 @@ def parse_measurements_csv(file_bytes: bytes, filename: str = "upload.csv"
             warnings.extend(invalid[:3])
 
         aqi_val: Optional[float] = None
-        if has_aqi and not pollutants and not pd.isna(row.get("aqi")):
+        if aqi_col is not None and not pollutants and not pd.isna(row.iloc[aqi_col]):
             try:
-                aqi_val = float(row["aqi"])
+                aqi_val = float(row.iloc[aqi_col])
             except (TypeError, ValueError):
                 warnings.append(f"aqi row {idx + 2}: not a number, skipped")
                 aqi_val = None
@@ -264,20 +368,33 @@ def parse_measurements_csv(file_bytes: bytes, filename: str = "upload.csv"
                     warnings.append(f"aqi row {idx + 2}: {err}, skipped")
                     aqi_val = None
 
-        location = str(row["location"]) if "location" in df.columns and not pd.isna(row.get("location")) else "Imported location"
+        location = "Imported location"
+        if location_col is not None and not pd.isna(row.iloc[location_col]):
+            loc = str(row.iloc[location_col]).strip()
+            if loc:
+                location = loc
 
-        ts = datetime.now(timezone.utc)
-        if "timestamp" in df.columns and not pd.isna(row.get("timestamp")):
+        ts = None
+        ts_explicit = False
+        if ts_col is not None and not pd.isna(row.iloc[ts_col]):
             try:
-                ts = pd.to_datetime(row["timestamp"], errors="raise").to_pydatetime()
+                t = pd.to_datetime(row.iloc[ts_col], errors="raise")
+                ts = t.to_pydatetime()
+                ts_explicit = True
                 if ts.tzinfo is None:
                     ts = ts.replace(tzinfo=timezone.utc)
+                    naive_ts += 1
             except Exception:  # noqa: BLE001
-                warnings.append(f"timestamp row {idx + 2}: unparseable, using import time")
+                warnings.append(
+                    f"timestamp row {idx + 2}: unparseable, using import time")
+        if ts is None:
+            ts = datetime.now(timezone.utc)
+            missing_ts += 1
 
         m = MeasurementSet(location=location, pollutants=pollutants,
                           aqi=aqi_val, timestamp=ts, source="import",
-                          notes=f"Row {idx + 2} of {filename}")
+                          notes=f"Row {idx + 2} of {filename}",
+                          synthetic_timestamp=not ts_explicit)
         m.finalize()
         if m.display_aqi is not None:
             measurements.append(m)
@@ -285,4 +402,39 @@ def parse_measurements_csv(file_bytes: bytes, filename: str = "upload.csv"
     if not measurements:
         raise ValueError("No usable measurement rows found in the CSV.")
 
-    return measurements, warnings[:10]
+    # De-duplicate identical observations. Rows without a real timestamp
+    # are keyed without one, otherwise every row would look unique.
+    seen: set = set()
+    deduped: list[MeasurementSet] = []
+    dupes = 0
+    for m in measurements:
+        ts_key = None if m.synthetic_timestamp else m.timestamp
+        key = _row_key(m.location, ts_key, m.pollutants) + (m.aqi,)
+        if key in seen:
+            dupes += 1
+            continue
+        seen.add(key)
+        deduped.append(m)
+    if dupes:
+        warnings.append(f"{dupes} duplicate row(s) skipped "
+                        "(identical location, time and values).")
+
+    if missing_ts:
+        warnings.append(f"{missing_ts} row(s) had no timestamp; "
+                        "the import time was used instead.")
+    if naive_ts:
+        warnings.append(f"{naive_ts} timestamp(s) had no timezone; "
+                        "assumed UTC.")
+
+    return deduped, warnings[:10]
+
+
+def measurement_fingerprint(m: MeasurementSet) -> tuple:
+    """Stable identity for a measurement, used for staleness checks.
+
+    Unlike ``id(m)`` this survives session-state serialisation and object
+    recreation, so cached results are invalidated exactly when the
+    underlying reading changes.
+    """
+    return (m.location, m.timestamp.isoformat(), m.display_aqi, m.source,
+            tuple(sorted(m.pollutants.items())))

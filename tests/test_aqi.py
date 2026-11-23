@@ -1,9 +1,12 @@
-import math
 
 import pytest
 
-from airaware.aqi import (calculate_aqi, category_for, is_outdoor_safe,
-                          pollutant_sub_index)
+from airaware.aqi import (
+    calculate_aqi,
+    category_for,
+    is_outdoor_safe,
+    pollutant_sub_index,
+)
 
 
 class TestSubIndex:

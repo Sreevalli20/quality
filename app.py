@@ -6,6 +6,8 @@ Deploy:       Streamlit Community Cloud (see README.md)
 
 from __future__ import annotations
 
+import html
+
 import streamlit as st
 
 from airaware import pages, ui
@@ -61,11 +63,12 @@ def _sidebar():
     m = st.session_state.get("measurement")
     if m and m.display_aqi is not None:
         st.sidebar.markdown(
-            f"**AQI {m.display_aqi:.0f}** · {m.category_name or ''}<br>"
-            f"{m.location}<br>"
+            f"**AQI {m.display_aqi:.0f}** · "
+            f"{html.escape(m.category_name or '')}<br>"
+            f"{html.escape(m.location or '')}<br>"
             f"<span style='font-size:.75rem;color:#66756a'>"
             f"{m.timestamp.strftime('%Y-%m-%d %H:%M UTC')} · "
-            f"{m.source_label}</span>",
+            f"{html.escape(m.source_label)}</span>",
             unsafe_allow_html=True)
         if m.is_sample:
             st.sidebar.caption("Sample data — not a live reading.")

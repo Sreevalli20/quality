@@ -1,6 +1,5 @@
 """Regression tests for bugs found in the engineering review."""
 
-import math
 
 import pytest
 
@@ -37,24 +36,24 @@ class TestCategoryBoundaryGaps:
 
 class TestCsvAqiValidation:
     def test_out_of_range_aqi_warned_and_skipped(self):
-        csv = "location,aqi\nGood,250\nBad,99999\n".encode()
+        csv = b"location,aqi\nGood,250\nBad,99999\n"
         ms, warns = parse_measurements_csv(csv)
         assert len(ms) == 1
         assert ms[0].display_aqi == 250
         assert any("aqi" in w.lower() for w in warns)
 
     def test_only_invalid_rows_raise(self):
-        csv = "location,aqi\nBad,-5\nWorse,abc\n".encode()
+        csv = b"location,aqi\nBad,-5\nWorse,abc\n"
         with pytest.raises(ValueError, match="No usable"):
             parse_measurements_csv(csv)
 
     def test_negative_aqi_row_dropped(self):
-        csv = "location,aqi\nX,-20\n".encode()
+        csv = b"location,aqi\nX,-20\n"
         with pytest.raises(ValueError, match="No usable"):
             parse_measurements_csv(csv)
 
     def test_fractional_aqi_category(self):
-        csv = "location,aqi\nX,50.5\n".encode()
+        csv = b"location,aqi\nX,50.5\n"
         ms, _ = parse_measurements_csv(csv)
         assert ms[0].category_name == "Satisfactory"
 

@@ -8,7 +8,7 @@ distinction explicitly.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from typing import Optional
 
 # ---------------------------------------------------------------------------
@@ -121,7 +121,10 @@ def estimate_trip_savings(new_mode: str, avoided_mode: str, distance_km: float,
             "km_per_litre_used": kpl,
             "fuel_price_used": price,
             "note": ("Estimate based on generic factors; your real savings "
-                     "depend on vehicle, driving style and occupancy."),
+                     "depend on vehicle, driving style and occupancy. The "
+                     "new mode's own cost (fare/toll/electricity) is NOT "
+                     "subtracted - 'fuel saved' refers to the avoided "
+                     "vehicle only."),
         },
     }
 

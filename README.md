@@ -29,10 +29,10 @@ and honest data provenance.
 
 | Module | What it does |
 |---|---|
-| **Home** | Welcoming dashboard with three guided entry choices (manual entry, CSV upload, labelled sample data), alerts, feature tour and module CTAs |
+| **Home** | Welcoming dashboard with guided entry choices (manual entry, CSV upload, labelled sample data, optional live provider fetch), alerts, feature tour and module CTAs |
 | **Air Quality Explorer** | Guided pollutant form (empty fields, unit + plain-language hints), CPCB AQI assessment, sub-index charts, gauge, health guidance, data-completeness warnings, CSV comparison |
-| **Personal AI Assistant** | Companion-style profile form → prioritised advice with *what / why / when / cost / alternative* per item; optional Gemini briefing via secrets; Markdown personal report download |
-| **My Daily Air Plan** | Editable hour-by-hour schedule adapted to current AQI; auto-refreshes when the reading changes; CSV download |
+| **Personal AI Assistant** | Companion-style profile form → prioritised advice with *what / why / when / cost / alternative* per item; optional AI briefing via pluggable provider (Gemini); stale-briefing invalidation; Markdown personal report download |
+| **My Daily Air Plan** | Editable hour-by-hour schedule adapted to current AQI with a "now" time-slot marker; regenerates when the reading changes; CSV download |
 | **Indoor Air Guardian** | Room-picker (bedroom, living room, kitchen, study, children's room), budget-tier tabs (free → higher-cost), smart ventilation advice |
 | **Green Lifestyle Planner** | Personalised sustainable-living options across transport, energy, waste and household — with honest benefits *and* limitations |
 | **Environmental Impact** | CO₂e savings estimator for mode shifts and AC reduction, action log with cumulative chart, CSV report |
@@ -41,9 +41,10 @@ and honest data provenance.
 
 ## How it works
 
-1. **Home → Start your air-quality check** — choose one of three guided
-   paths: *enter measurements* (empty fields with unit hints, partial data
-   OK), *upload a CSV*, or *explore labelled sample data*.
+1. **Home → Start your air-quality check** — choose a guided path:
+   *enter measurements* (empty fields with unit hints, partial data OK),
+   *upload a CSV*, *explore labelled sample data*, or — when a provider
+   key is configured — *fetch live monitoring data*.
 2. **Assess** — pollutant concentrations are converted to sub-indices using
    official CPCB breakpoints; the overall AQI is the maximum sub-index.
 3. **Decide** — a deterministic rule engine combines the AQI category,
@@ -56,7 +57,10 @@ and honest data provenance.
 
 - Implements the **CPCB National Air Quality Index (NAQI)** method.
 - Each pollutant has published 24-hour breakpoints (8-hour for O₃); a
-  concentration is mapped to a sub-index by piecewise-linear interpolation.
+  concentration is mapped to a sub-index by **continuous piecewise-linear
+  interpolation** through every breakpoint corner, so values inside the
+  1-unit gaps between declared bands interpolate smoothly instead of
+  jumping a full band.
 - **Overall AQI = maximum sub-index**; that pollutant is the dominant one.
 - Averaging periods follow CPCB (24 h, O₃ 8 h).
 - **Partial measurements** (e.g. only PM2.5) produce a *partial* assessment —
@@ -75,14 +79,28 @@ Every measurement records **value, unit, source and timestamp**.
 - **CSV import** — parsed and validated locally; nothing is uploaded.
 - **Sample demonstration data** — illustrative values for demos, always
   labelled *"NOT live"*; never presented as real readings.
-- **No live feed is bundled.** The app works fully offline and does not
-  fabricate readings. For live data, export official CPCB / state-board /
-  OpenAQ tables and import them as CSV.
+- **Live provider data** *(optional)* — fetched on demand from configured
+  providers (OpenAQ v3) via `airaware/providers.py`. Results keep the
+  provider's own measurement timestamp and station name; readings older
+  than 24 h are explicitly flagged as stale, never relabelled as current.
+- **No reading is ever fabricated.** Without a provider key the app works
+  fully offline from manual entry, CSV import or labelled samples.
 
-CSV columns accept common aliases (`pm25`, `PM2.5`, `pm2.5`, `no2`,
-`carbon monoxide`, …) plus optional `aqi`, `location`, `timestamp`.
-Uploads are limited to 2 MB / 5,000 rows; malformed values are rejected with
-warnings rather than crashing.
+CSV columns accept common aliases case-, whitespace- and
+punctuation-insensitively (`pm25`, `PM2.5`, `PM 2.5`, `PM2.5 (µg/m3)`,
+`no2`, `carbon monoxide`, `station name`, …). Unit-variant columns are
+converted to canonical CPCB units where the conversion is exact
+(e.g. `pm10 (mg/m3)` × 1000 → µg/m³; `CO (µg/m³)` ÷ 1000 → mg/m³);
+columns in units that cannot be converted safely (e.g. ppm) are rejected
+with an explicit warning. Optional columns: `aqi` (used only when no
+pollutant columns have values for that row), `location`/`city`/`station`,
+`timestamp`/`datetime`/`date`/`time`.
+
+Robustness: uploads are limited to 2 MB / 5,000 rows; malformed lines are
+counted and reported; identical rows (same location, time and values) are
+de-duplicated; missing timestamps fall back to import time with a
+warning; naive timestamps are assumed UTC with a warning; out-of-range
+values are rejected, never silently corrected.
 
 ## Recommendation methodology
 
@@ -98,14 +116,39 @@ Every recommendation displays **what to do, why it matters, when, an
 approximate cost (only where defensible) and a practical alternative** —
 so the logic is fully auditable.
 
-**Optional Gemini enhancement:** if `GEMINI_API_KEY` (and optionally
+**Optional AI briefing:** the assistant uses a pluggable provider
+architecture (`airaware/ai.py`). If `GEMINI_API_KEY` (and optionally
 `GEMINI_MODEL`, default `gemini-2.0-flash`) is set in
-`.streamlit/secrets.toml` or Streamlit Cloud secrets, the assistant can
-generate a natural-language briefing via Google's Gemini API. The call
-uses only the Python standard library (`urllib`), times out gracefully,
-and returns `None` on any failure — the rule engine output is always
-available underneath. AI output is **always labelled "AI-generated"**; the
-app never claims generative AI was used when it was not.
+`.streamlit/secrets.toml` or Streamlit Cloud secrets, the Gemini provider
+generates a natural-language briefing via Google's API. Calls use only
+the Python standard library (`urllib`), a 25 s timeout, up to 3 attempts
+with exponential backoff on transient errors (timeouts, 429, 5xx), and a
+system instruction that forbids inventing figures. Inputs embedded in the
+prompt are sanitised and framed as untrusted data; output is sanitised,
+length-capped and HTML-escaped before display. A briefing is fingerprinted
+to the exact reading + profile it was generated from — change either and
+the app asks you to regenerate rather than showing stale AI text. Every
+failure mode falls back to the rule engine, and AI output is always
+labelled *AI-generated*. Additional providers can be registered in
+`_PROVIDER_CLASSES` without touching the UI.
+
+## Live data providers
+
+`airaware/providers.py` defines an `AirQualityProvider` contract
+(`configured()`, `health_check()`, `latest()`) with failover ordering in
+`fetch_latest()`. `OpenAQProvider` implements it against the OpenAQ v3
+API:
+
+- Activate by setting `OPENAQ_API_KEY` in secrets (free key from
+  openaq.org). A "Fetch live monitoring data" entry appears on Home.
+- Results carry `source="external"`, the station name, the provider's own
+  measurement timestamp, and per-pollutant unit validation (unexpected
+  units are skipped, never misconverted).
+- Readings older than 24 h are returned but flagged "freshest available,
+  not current" — stale data is never presented as live.
+- The About page shows each provider's configuration and health status.
+- Any provider failure returns `None`; the UI falls back honestly to
+  manual entry / CSV / samples.
 
 ## Environmental impact assumptions
 
@@ -147,7 +190,8 @@ airaware/
   lifestyle.py          Green lifestyle options + personalisation
   impact.py             Emission factors & impact calculations
   alerts.py             Rule-based alerts with severity labels
-  ai.py                 Optional Gemini briefing (stdlib urllib, secrets-gated)
+  ai.py                 Pluggable AI providers (Gemini: retries, sanitisation)
+  providers.py          Live AQI data providers (OpenAQ) with health checks
   report.py             Personal Markdown report generator
   charts.py             Plotly chart helpers
   ui.py                 Design system, CSS, cards, navigation helpers
@@ -170,9 +214,10 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-Open http://localhost:8501 — the **Home** page offers three guided ways to
-load a reading: *enter measurements* manually, *upload a CSV*, or *explore
-labelled sample data*. The sidebar then navigates between the nine modules;
+Open http://localhost:8501 — the **Home** page offers guided ways to
+load a reading: *enter measurements* manually, *upload a CSV*, *explore
+labelled sample data*, and *fetch live data* when a provider key is
+configured. The sidebar then navigates between the nine modules;
 it always shows your current reading and its provenance.
 
 ### Try the sample data
@@ -204,9 +249,20 @@ Export a CPCB / state-board / OpenAQ table to CSV. One row = one observation.
 Upload via **Home → Upload my air-quality report**, or the CSV comparison
 panel inside the Explorer.
 
-### Optional Gemini configuration
+### Optional live data (OpenAQ)
 
-Create `.streamlit/secrets.toml` (git-ignored — never commit real keys):
+Add to `.streamlit/secrets.toml`:
+
+```toml
+OPENAQ_API_KEY = "your-key-here"   # free key from https://openaq.org
+```
+
+Home then shows **Fetch live monitoring data**: optionally enter a city
+name, and AirAware pulls the freshest real station reading with its own
+timestamp. Provider health is visible on the About page. Without a key the
+option simply does not appear.
+
+### Optional Gemini configuration
 
 ```toml
 GEMINI_API_KEY = "your-key-here"
@@ -214,11 +270,11 @@ GEMINI_MODEL = "gemini-2.0-flash"   # optional; this is the default
 ```
 
 With a valid key, **Personal AI Assistant** gains a "Generate AI briefing"
-button that sends your profile summary and top rule-based recommendations to
-the Gemini API (stdlib `urllib`, 25 s timeout). Every failure mode — missing
-key, quota, network, malformed response — falls back silently to the
-rule-based plan, and AI output is always labelled *AI-generated*. The app
-runs fully without a key.
+button (25 s timeout, up to 3 attempts with backoff on transient errors).
+Every failure mode — missing key, quota, network, malformed response —
+falls back silently to the rule-based plan, output is sanitised and
+HTML-escaped, and always labelled *AI-generated*. The app runs fully
+without a key.
 
 ## Testing
 
@@ -227,10 +283,14 @@ pip install pytest
 python -m pytest tests/ -v
 ```
 
-128 tests cover AQI breakpoints and category-boundary edge cases (including
-fractional/user-supplied AQI), invalid inputs, CSV parsing edge cases,
-recommendation rules, planner logic, emission calculations, Gemini failure
-handling and fallback, report generation, and Streamlit AppTest smoke tests
+194 tests cover AQI breakpoints, interpolation continuity across
+breakpoint gaps and category-boundary edge cases (including
+fractional/user-supplied AQI), invalid inputs, CSV parsing edge cases
+(punctuation-insensitive headers, unit conversion, duplicates, malformed
+lines, timestamp handling), live-provider success/failure/staleness paths,
+AI provider retries and output sanitisation, recommendation rules,
+planner logic and time-slot mapping, emission calculations, report
+generation, HTML-escaping of user data, and Streamlit AppTest smoke tests
 that exercise navigation and key journeys across all nine pages.
 
 ## Streamlit Community Cloud deployment
@@ -250,32 +310,41 @@ submission and disclose any mismatch honestly.
 
 ## Security & privacy
 
-- File uploads limited to 2 MB / 5,000 rows; all parsing is local and
-  defensive (bad lines skipped, values range-checked).
-- Optional Gemini key is read from Streamlit secrets only — never
-  hardcoded, never logged, and the API call has a 25 s timeout with
-  graceful fallback.
+- File uploads limited to 2 MB / 5,000 rows; parsing is local and
+  defensive (malformed lines counted and reported, values range-checked,
+  duplicate rows de-duplicated, oversized files rejected before parsing).
+- All user-influenced strings rendered as HTML (location names, profile
+  fields, KPI values, alert text, AI output) are HTML-escaped — imported
+  CSV content cannot inject markup into the UI.
+- AI prompts sanitise untrusted inputs (control characters stripped,
+  length-capped) and frame them as data, not instructions; a system
+  instruction forbids inventing figures; model output is sanitised,
+  length-capped and HTML-escaped before display.
+- API keys (Gemini, OpenAQ) are read from Streamlit secrets only —
+  never hardcoded, never logged, never placed in prompts. Provider and
+  AI calls have explicit timeouts; AI retries are bounded with backoff.
 - No telemetry. No personal data is persisted anywhere; everything lives
   in the session or in files you explicitly download.
 
 ## Limitations
 
-- **No live monitoring feed** — deliberate, to avoid fabricated data; CSV
-  import covers official exports.
-- Recommendations are **rule-based**, not ML-personalised.
+- **Live fetch requires a provider API key** — without `OPENAQ_API_KEY`
+  the app relies on manual entry, CSV import or labelled samples (by
+  design, nothing is fabricated).
+- Recommendations are **rule-based**, not ML-personalised (the optional
+  AI layer only re-explains them).
 - Indoor guidance is qualitative; a real PM2.5 sensor would enable
   quantitative tracking.
 - Hourly pollution is not predicted — the planner adapts to the *current*
-  reading only.
-- Impact figures are generic estimates.
+  reading only (the "now" marker reflects time of day, not a forecast).
+- Impact figures are generic estimates; the new mode's own fare is not
+  subtracted from "fuel saved".
 
 ## Future improvements
 
-- Optional live fetch from CPCB/OpenAQ (API-key free endpoints where
-  available).
+- Additional live providers (CPCB/state-board endpoints where public).
 - Multi-day exposure logging and personal AQI history.
 - Family/household sharing via local exports.
-- Optional LLM explanations clearly labelled as such, when configured.
 
 ## License
 

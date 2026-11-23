@@ -1,7 +1,11 @@
 import pytest
 
-from airaware.impact import (estimate_ac_savings, estimate_trip_savings,
-                             summarise_actions, ImpactAction)
+from airaware.impact import (
+    ImpactAction,
+    estimate_ac_savings,
+    estimate_trip_savings,
+    summarise_actions,
+)
 
 
 class TestTripSavings:

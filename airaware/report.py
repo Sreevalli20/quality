@@ -7,7 +7,10 @@ from typing import Optional
 
 from .aqi import POLLUTANTS
 from .data import MeasurementSet
+from .planner import TIME_SLOTS
 from .recommendations import Recommendation, UserProfile
+
+_SLOT_LABELS = {key: label for key, label, _ in TIME_SLOTS}
 
 
 def build_report(measurement: Optional[MeasurementSet],
@@ -99,8 +102,13 @@ def build_report(measurement: Optional[MeasurementSet],
     if plan_guidance:
         lines.append("## My daily plan")
         lines.append("")
+        for slot, label in _SLOT_LABELS.items():
+            text = plan_guidance.get(slot)
+            if text:
+                lines.append(f"- **{label}:** {text}")
         for slot, text in plan_guidance.items():
-            lines.append(f"- **{slot}:** {text}")
+            if slot not in _SLOT_LABELS:
+                lines.append(f"- **{slot}:** {text}")
         lines.append("")
 
     lines.append("---")
