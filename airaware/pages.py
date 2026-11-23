@@ -8,7 +8,14 @@ from datetime import datetime, timezone
 import pandas as pd
 import streamlit as st
 
-from . import ai, charts, providers, report, ui
+# Explicit submodule imports (see app.py) - avoids bare KeyError on
+# partial deployments where `from pkg import sub` loses the submodule.
+import airaware.ai as ai
+import airaware.build_info as build_info
+import airaware.charts as charts
+import airaware.providers as providers
+import airaware.report as report
+import airaware.ui as ui
 from .alerts import evaluate_alerts
 from .aqi import CATEGORIES, POLLUTANTS, category_color, is_outdoor_safe
 from .data import (
@@ -1628,6 +1635,16 @@ def about_page():
             "CO₂/kWh. Fuel prices and economy are defaults you can "
             "override. Figures are estimates of climate benefit, not "
             "measured reductions.")
+    with st.expander("Build information"):
+        st.markdown(
+            f"- **Version:** {html.escape(build_info.APP_VERSION)}\n"
+            f"- **Git commit:** `{html.escape(build_info.GIT_SHA)}`\n"
+            f"- **Build ID:** `{html.escape(build_info.BUILD_ID)}` "
+            f"({html.escape(build_info.BUILT_AT)})\n"
+            f"- **Source fingerprint:** `{html.escape(build_info.SOURCE_HASH)}`")
+        st.caption("The source fingerprint is a hash of the shipped "
+                   "files; compare it against the repository to confirm "
+                   "which commit this deployment is serving.")
     with st.expander("Technology"):
         st.markdown("Python 3.14 · Streamlit · pandas · plotly · "
                     "optional Gemini API (stdlib urllib only). No "

@@ -283,7 +283,7 @@ pip install pytest
 python -m pytest tests/ -v
 ```
 
-194 tests cover AQI breakpoints, interpolation continuity across
+201 tests cover AQI breakpoints, interpolation continuity across
 breakpoint gaps and category-boundary edge cases (including
 fractional/user-supplied AQI), invalid inputs, CSV parsing edge cases
 (punctuation-insensitive headers, unit conversion, duplicates, malformed

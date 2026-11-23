@@ -10,7 +10,12 @@ import html
 
 import streamlit as st
 
-from airaware import pages, ui
+# Explicit submodule imports: `import pkg.sub as sub` binds through
+# sys.modules and raises a clear ModuleNotFoundError if the file is
+# missing, unlike `from pkg import sub` which can surface a bare
+# KeyError during partial/stale deployments.
+import airaware.pages as pages
+import airaware.ui as ui
 from airaware.aqi import category_color
 
 NAV = [
