@@ -120,44 +120,112 @@ def _pollutant_note(p: str) -> str:
 # ===========================================================================
 
 def _home_hero():
-    """Split-layout landing hero: story left, illustration + demo AQI card
-    right. Real Streamlit buttons below drive the CTAs."""
+    """Editorial landing hero: story left, illustrated scene + clearly
+    labelled sample AQI card right."""
     trust = "".join(
         f'<span>{ui.icon(ic, 14)}{html.escape(t)}</span>'
         for ic, t in [("shield", "CPCB methodology"),
                       ("eye", "Privacy-conscious"),
                       ("bolt", "Offline-ready")])
     art = (
-        '<div style="position:relative">'
+        '<div style="position:absolute;inset:0">'
         + ui.hero_art()
-        + ui.floating_aqi_card(64.0, "Good", "Demo reading · Pune")
+        + ui.floating_aqi_card(64.0, "Good", "Sample reading · Pune")
         + '</div>')
     st.markdown(
         '<div class="aw-hero"><div class="aw-hero-grid">'
         '<div class="aw-hero-left">'
-        '<span class="aw-eyebrow" style="background:rgba(255,255,255,.12);'
-        'border-color:rgba(255,255,255,.25);color:#dcebdd">'
-        'AirAware AI</span>'
-        '<h1>Breathe better.<br>Live healthier.</h1>'
-        '<p class="aw-sub">AirAware turns air-quality numbers into simple, '
-        'personal decisions - what to do today, how to protect your home, '
-        'and how to move cleaner, together.</p>'
+        '<span class="aw-eyebrow aw-eyebrow--light">AirAware AI</span>'
+        '<h1>Breathe better.<br>Live well.</h1>'
+        '<p class="aw-sub">Air quality shouldn\'t feel like a chemistry '
+        'lesson. AirAware turns the numbers into simple, personal answers '
+        '- what to do today, how to protect your home, and how to move '
+        'cleaner together.</p>'
         '<div class="aw-trust">' + trust + '</div>'
+        '<div class="aw-meta" style="margin-top:1.4rem">'
+        'CPCB AQI methodology · works offline · no account needed</div>'
         '</div>'
         f'<div class="aw-hero-right">{art}</div>'
         '</div></div>',
         unsafe_allow_html=True)
     c1, c2 = st.columns(2)
     with c1:
-        if st.button("Check my air quality", key="hero_check",
+        if st.button("Check my air", key="hero_check",
                      type="primary", width="stretch"):
             st.session_state["home_entry"] = "manual"
             st.rerun()
     with c2:
-        if st.button("Explore AirAware", key="hero_explore",
+        if st.button("Take the tour", key="hero_explore",
                      width="stretch"):
             st.session_state["nav_page"] = "Air Quality Explorer"
             st.rerun()
+
+
+def _reading_band(m: MeasurementSet):
+    """Today's-reading summary with a visual AQI ring + provenance."""
+    cat_color = category_color(m.category_name)
+    if m.display_aqi is not None:
+        st.markdown(
+            '<div class="aw-card"><div class="aw-aqi-wrap">'
+            + ui.aqi_ring(m.display_aqi, m.category_name or "", size=132)
+            + '<div class="aw-aqi-side" style="flex:1;min-width:220px">'
+            + '<div class="aw-eyebrow">Your current reading</div>'
+            + f'<div class="big">{html.escape(m.location or "-")} · '
+            + f'{m.timestamp.strftime("%d %b %Y, %H:%M UTC")}</div>'
+            + f'<div class="aw-meta" style="margin:.35rem 0 .8rem">'
+            + f'{html.escape(m.source_label)}</div>'
+            + f'<div style="display:flex;gap:.6rem;flex-wrap:wrap">'
+            + f'<span class="aw-chip" style="border-color:{cat_color};'
+            + f'color:{cat_color}">{ui.icon("gauge", 14)} AQI '
+            + f'{m.display_aqi:.0f}</span>'
+            + f'<span class="aw-chip">{ui.icon("activity", 14)} '
+            + f'{html.escape(m.category_name or "-")}</span></div>'
+            + '</div></div></div>',
+            unsafe_allow_html=True)
+    for a in evaluate_alerts(m):
+        ui.alert_box(a.severity, a.title, a.detail)
+    _provenance_warning(m)
+    c1, c2 = st.columns(2)
+    c1.button("See full assessment", key="home_to_explorer",
+              on_click=lambda: st.session_state.update(
+                  nav_page="Air Quality Explorer"))
+    c2.button("Get personalised advice", key="home_to_assistant",
+              on_click=lambda: st.session_state.update(
+                  nav_page="Personal AI Assistant"))
+
+
+def _entry_card(icon_name: str, title: str, desc: str, btn_label: str,
+                key: str, value: str, pill: str = "",
+                extra_html: str = "") -> None:
+    pill_html = (f' <span class="aw-tag-soft">{html.escape(pill)}</span>'
+                 if pill else "")
+    st.markdown(
+        f'<div class="aw-card aw-card--cta" style="height:100%;'
+        f'display:flex;flex-direction:column">'
+        f'<div class="aw-feat-ico aw-feat-ico--lg">{ui.icon(icon_name, 26)}</div>'
+        f'<h4>{html.escape(title)}{pill_html}</h4>'
+        f'<p style="flex:1">{html.escape(desc)}</p>{extra_html}</div>',
+        unsafe_allow_html=True)
+    if st.button(btn_label, key=key, width="stretch"):
+        st.session_state["home_entry"] = value
+        st.rerun()
+
+
+def _sample_preview() -> str:
+    """Mini list of sample cities with their demo AQIs (accurately labelled)."""
+    rows = "".join(
+        f'<div style="display:flex;justify-content:space-between;'
+        f'align-items:center;padding:.28rem 0;font-size:.8rem">'
+        f'<span>{html.escape(m.location.split(" (")[0])}</span>'
+        f'<b style="color:{category_color(m.category_name)}">'
+        f'{m.display_aqi:.0f}</b></div>'
+        for m in SAMPLE_MEASUREMENTS)
+    return ('<div style="background:var(--mint);border-radius:12px;'
+            'padding:.6rem .9rem;margin-top:.7rem;border:1px solid '
+            'var(--sage-soft)">'
+            '<div style="font-size:.68rem;font-weight:800;letter-spacing:'
+            '.1em;text-transform:uppercase;color:var(--evergreen)">'
+            'Sample cities</div>' + rows + '</div>')
 
 
 def home_page():
@@ -166,127 +234,171 @@ def home_page():
 
     _home_hero()
 
-    # ---------- current reading (compact) ----------
+    # ---------- current reading ----------
     if m and m.display_aqi is not None:
-        cat = m.category_name or ""
-        ui.card(
-            f"Your current reading · AQI {m.display_aqi:.0f} — {cat}",
-            body_html=(
-                f'<p>{html.escape(m.location or "-")} · '
-                f'{m.timestamp.strftime("%Y-%m-%d %H:%M UTC")} · '
-                f'{html.escape(m.source_label)}</p>'),
-            variant="flat")
-        for a in evaluate_alerts(m):
-            ui.alert_box(a.severity, a.title, a.detail)
-        _provenance_warning(m)
-        c1, c2 = st.columns(2)
-        c1.button("See full assessment", key="home_to_explorer",
-                  on_click=lambda: st.session_state.update(
-                      nav_page="Air Quality Explorer"))
-        c2.button("Get personalised advice", key="home_to_assistant",
-                  on_click=lambda: st.session_state.update(
-                      nav_page="Personal AI Assistant"))
+        _reading_band(m)
 
     # ---------- start your journey ----------
-    ui.section_title("Start your journey")
+    ui.section_title("Start with a reading")
     entry = st.session_state.get("home_entry")
 
     if entry is None:
         choices = [
-            ("Measure my air", "gauge",
+            ("gauge", "Measure my air",
              "Type PM2.5, PM10 or AQI values you already have",
-             "Enter my own measurements", "manual"),
-            ("Upload my report", "upload",
+             "Enter my own numbers", "manual", ""),
+            ("upload", "Upload my report",
              "Import a CSV exported from CPCB, a monitor or OpenAQ",
-             "Upload a CSV", "csv"),
-            ("Explore sample data", "eye",
+             "Upload a CSV", "csv", ""),
+            ("eye", "Explore sample data",
              "Try realistic sample readings - always labelled as samples",
-             "Browse samples", "sample"),
+             "Browse samples", "sample", "SAMPLE"),
         ]
         if providers.available_providers():
             choices.append(
-                ("Fetch live data", "activity",
+                ("activity", "Fetch live data",
                  "Pull the freshest reading from a configured provider",
-                 "Fetch live reading", "live"))
+                 "Fetch live reading", "live", "LIVE"))
         cols = st.columns(len(choices))
-        for col, (title, ic, desc, btn, val) in zip(cols, choices):
+        for col, (ic, title, desc, btn, val, pill) in zip(cols, choices):
             with col:
-                pill = (' <span class="aw-pill" style="background:#f6e7c8;'
-                        'color:#8a5a00">SAMPLE</span>' if val == "sample"
-                        else "")
-                st.markdown(
-                    f'<div class="aw-card aw-card--cta" '
-                    f'style="height:100%">'
-                    f'<div class="aw-feat-ico">{ui.icon(ic, 24)}</div>'
-                    f'<h4>{html.escape(title)}{pill}</h4>'
-                    f'<p>{html.escape(desc)}</p></div>',
-                    unsafe_allow_html=True)
-                if st.button(btn, key=f"entry_{val}", width="stretch"):
-                    st.session_state["home_entry"] = val
-                    st.rerun()
+                extra = (_sample_preview() if val == "sample" else "")
+                _entry_card(ic, title, desc, btn, f"entry_{val}", val,
+                            pill=pill, extra_html=extra)
     else:
         _entry_panel(entry)
         if st.button("← Back to all options", key="entry_back"):
             st.session_state.pop("home_entry", None)
             st.rerun()
 
+    # ---------- image-led feature showcase ----------
     ui.hr()
+    ui.section_title("What AirAware can do for you")
 
-    # ---------- what makes AirAware different ----------
-    ui.section_title("What makes AirAware different")
-    feats = [
-        ("Understand your air", "wind",
-         "CPCB-method AQI from real pollutant measurements, with honest "
-         "labels for partial or sample data.", "Explore the data",
-         "feat_explorer", "Air Quality Explorer"),
-        ("Your personal AI assistant", "sparkles",
-         "Tell AirAware your routine and get prioritised advice with "
-         "reasons, costs and alternatives.", "Meet your assistant",
-         "feat_assistant", "Personal AI Assistant"),
-        ("A healthier home", "home",
-         "Room-by-room indoor air tips for every budget, from free habits "
-         "to HEPA filtration.", "Check my rooms", "feat_indoor",
-         "Indoor Air Guardian"),
-        ("Your daily air plan", "calendar",
-         "Hour-by-hour guidance that adapts to today's reading - exercise "
-         "indoors, travel smarter, sleep safer.", "Plan my day",
-         "feat_plan", "My Daily Air Plan"),
-        ("Greener everyday choices", "recycle",
-         "Compare transit, carpool, cycling and walking with clear "
-         "benefits and honest limitations.", "Explore options",
-         "feat_lifestyle", "Green Lifestyle Planner"),
-        ("Family and community", "users",
-         "Household checklists and simple explanations kids can "
-         "understand.", "Get family tips", "feat_family",
-         "Family & Community"),
-    ]
-    for i in range(0, len(feats), 3):
-        cols = st.columns(3)
-        for j, feat in enumerate(feats[i:i + 3]):
-            title, ic, desc, label, key, target = feat
-            with cols[j]:
-                st.markdown(
-                    f'<div class="aw-card aw-feat">'
-                    f'<div class="aw-feat-ico">{ui.icon(ic, 24)}</div>'
-                    f'<h4>{html.escape(title)}</h4>'
-                    f'<p>{html.escape(desc)}</p></div>',
-                    unsafe_allow_html=True)
-                if st.button(label, key=key, width="stretch"):
-                    st.session_state["nav_page"] = target
-                    st.rerun()
+    st.markdown(
+        '<div class="aw-show">'
+        '<div class="art">' + ui.scene("city") + '</div>'
+        '<div><div class="aw-eyebrow">Understand</div>'
+        '<h3>See your air clearly</h3>'
+        '<ul class="aw-show-points">'
+        '<li>' + ui.icon("check", 16) + '<span>CPCB-method AQI from real '
+        'pollutant measurements</span></li>'
+        '<li>' + ui.icon("check", 16) + '<span>Honest labels for partial '
+        'or sample data</span></li>'
+        '<li>' + ui.icon("check", 16) + '<span>Pollutant-by-pollutant '
+        'breakdown with plain-language notes</span></li>'
+        '</ul></div></div>', unsafe_allow_html=True)
+    if st.button("Explore the data", key="feat_explorer",
+                 type="primary"):
+        st.session_state["nav_page"] = "Air Quality Explorer"
+        st.rerun()
 
-    # ---------- visual storytelling ----------
+    st.markdown(
+        '<div class="aw-show aw-show--flip">'
+        '<div class="art">' + ui.scene("companion") + '</div>'
+        '<div><div class="aw-eyebrow">Get guidance</div>'
+        '<h3>A companion that knows your routine</h3>'
+        '<ul class="aw-show-points">'
+        '<li>' + ui.icon("check", 16) + '<span>Prioritised advice with '
+        'reasons, timing and costs</span></li>'
+        '<li>' + ui.icon("check", 16) + '<span>A day plan that adapts to '
+        'today\'s reading</span></li>'
+        '<li>' + ui.icon("check", 16) + '<span>Optional AI briefing - '
+        'everything works without it</span></li>'
+        '</ul></div></div>', unsafe_allow_html=True)
+    if st.button("Meet your assistant", key="feat_assistant"):
+        st.session_state["nav_page"] = "Personal AI Assistant"
+        st.rerun()
+
+    st.markdown(
+        '<div class="aw-show">'
+        '<div class="art">' + ui.scene("indoor") + '</div>'
+        '<div><div class="aw-eyebrow">Protect</div>'
+        '<h3>A healthier home, room by room</h3>'
+        '<ul class="aw-show-points">'
+        '<li>' + ui.icon("check", 16) + '<span>Room-by-room indoor air '
+        'tips for every budget</span></li>'
+        '<li>' + ui.icon("check", 16) + '<span>Smart ventilation guidance '
+        'based on today\'s AQI</span></li>'
+        '<li>' + ui.icon("check", 16) + '<span>Household checklists the '
+        'whole family can use</span></li>'
+        '</ul></div></div>', unsafe_allow_html=True)
+    if st.button("Check my rooms", key="feat_indoor"):
+        st.session_state["nav_page"] = "Indoor Air Guardian"
+        st.rerun()
+
+    # secondary destinations as compact cards
+    ui.section_title("More ways to make a difference")
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        ui.feature_tile("Greener everyday choices", "Compare transit, "
+                        "carpool, cycling and walking with honest "
+                        "trade-offs.", "recycle", "Explore options",
+                        "feat_lifestyle", "Green Lifestyle Planner")
+    with c2:
+        ui.feature_tile("Track your impact", "See the climate benefit of "
+                        "your greener choices, in numbers.", "globe",
+                        "See my impact", "feat_impact",
+                        "Environmental Impact")
+    with c3:
+        ui.feature_tile("Family & community", "Simple explanations kids "
+                        "understand, plus ideas for your neighbourhood.",
+                        "users", "Get family tips", "feat_family",
+                        "Family & Community")
+
+    # ---------- journey ----------
     ui.hr()
-    ui.section_title("Air quality is more than a number")
+    ui.section_title("How it works")
     ui.journey([
-        ("gauge", "Measure", "Real readings from monitors, reports or "
-         "live stations - labelled honestly."),
+        ("gauge", "Measure", "Enter what you know, upload a report, or "
+         "explore labelled samples."),
         ("eye", "Understand", "Plain-language answers, not raw indices."),
-        ("sparkles", "Take action", "Prioritised steps for today, your "
-         "home and your trips."),
-        ("leaf", "Live better", "Small daily choices that add up to "
-         "cleaner air for everyone."),
+        ("sparkles", "Act", "Prioritised steps for today, your home and "
+         "your trips."),
     ])
+
+    # ---------- personal wellness ----------
+    ui.section_title("Small changes, easier breathing")
+    w1, w2, w3 = st.columns(3)
+    with w1:
+        ui.card("Time your outdoor time",
+                body_html='<p>On poor-air days, exercise early morning or '
+                'after rain. AirAware\'s daily plan tells you which slots '
+                'are safest.</p>')
+    with w2:
+        ui.card("Protect the vulnerable",
+                body_html='<p>Children, older adults and anyone with '
+                'asthma feel poor air sooner. Keep their spaces filtered '
+                'and ventilate on clean days.</p>')
+    with w3:
+        ui.card("Sleep with cleaner air",
+                body_html='<p>You spend a third of life asleep. A bedroom '
+                'purifier and closed windows on bad days add up to real '
+                'exposure reduction.</p>')
+
+    # ---------- environmental impact ----------
+    st.markdown(
+        '<div class="aw-cta-band" style="text-align:left">'
+        '<div class="aw-band-grid">'
+        '<div><div class="aw-eyebrow aw-eyebrow--light">Your impact</div>'
+        '<h2 style="text-align:left">Every clean choice adds up.</h2>'
+        '<p style="text-align:left;margin-left:0">Swap one car trip for a '
+        'metro ride or cycle and you can cut kilograms of CO₂e a week. '
+        'Track what you save - the planet notices.</p></div>'
+        '<div style="border-radius:18px;overflow:hidden">'
+        + ui.scene("impact") + '</div></div></div>',
+        unsafe_allow_html=True)
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("Start tracking my impact", key="home_impact",
+                     type="primary", width="stretch"):
+            st.session_state["nav_page"] = "Environmental Impact"
+            st.rerun()
+    with c2:
+        if st.button("See greener swaps", key="home_lifestyle",
+                     width="stretch"):
+            st.session_state["nav_page"] = "Green Lifestyle Planner"
+            st.rerun()
 
     # ---------- closing CTA ----------
     st.markdown(
@@ -306,17 +418,19 @@ def home_page():
             st.session_state["home_entry"] = "sample"
             st.rerun()
 
-    ui.section_title("Good to know")
-    st.markdown(
-        "- **AQI is a maximum, not an average** - one bad pollutant sets the "
-        "whole index under the CPCB method.\n"
-        "- **PM2.5 is the quiet risk** - particles small enough to enter the "
-        "bloodstream; filtration and masks matter most here.\n"
-        "- **Short trips pollute most per km** - cold engines and stop-go "
-        "traffic multiply emissions; combine errands when you can.\n"
-        "- **Windows are a two-way door** - open them on clean days, keep "
-        "them shut (and filter) on polluted ones."
-    )
+    with st.expander("Good to know"):
+        st.markdown(
+            "- **AQI is a maximum, not an average** - one bad pollutant "
+            "sets the whole index under the CPCB method.\n"
+            "- **PM2.5 is the quiet risk** - particles small enough to "
+            "enter the bloodstream; filtration and masks matter most "
+            "here.\n"
+            "- **Short trips pollute most per km** - cold engines and "
+            "stop-go traffic multiply emissions; combine errands when "
+            "you can.\n"
+            "- **Windows are a two-way door** - open them on clean days, "
+            "keep them shut (and filter) on polluted ones."
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -477,8 +591,8 @@ def explorer_page():
     ui.page_header(
         "Air Quality",
         "Air Quality Explorer",
-        "A guided assessment built on the official CPCB AQI methodology. "
-        "Enter what you know - partial data is handled honestly.")
+        "Your reading, explained. Built on the official CPCB AQI "
+        "methodology - partial data is labelled honestly.")
 
     m = _meas()
 
@@ -488,8 +602,14 @@ def explorer_page():
 
     # ---------- assessment ----------
     if m is None:
-        ui.empty_state("Enter measurements above (or start a check on Home) "
-                       "to see your assessment.")
+        st.markdown(
+            '<div class="aw-card" style="text-align:center;padding:2.6rem">'
+            '<div style="display:flex;justify-content:center;margin-bottom:.8rem">'
+            + ui.scene("city") + '</div>'
+            '<h3 style="margin:.2rem 0 .4rem">Your air story starts here</h3>'
+            '<p style="color:var(--muted);max-width:52ch;margin:0 auto">'
+            'Enter measurements above (or start a check on Home) to see '
+            'your assessment.</p></div>', unsafe_allow_html=True)
         return
 
     _provenance_warning(m)
@@ -540,20 +660,29 @@ def explorer_page():
                     'margin-top:1.4rem">What is in your air</div>',
                     unsafe_allow_html=True)
         pcols = st.columns(len(m.result.pollutant_results))
+        max_si = max(r.sub_index for r in m.result.pollutant_results)
         for col, r in zip(pcols, m.result.pollutant_results):
             info = POLLUTANTS[r.pollutant]
             c = _sub_index_color(r.sub_index)
+            bar_pct = min(100, r.sub_index / 5)
+            dom_mark = (' <span class="aw-tag-soft">main driver</span>'
+                        if r.sub_index == max_si and len(
+                            m.result.pollutant_results) > 1 else "")
             with col:
                 st.markdown(
                     f'<div class="aw-card" style="text-align:center;'
-                    f'padding:.9rem .6rem">'
-                    f'<div style="font-size:.7rem;font-weight:700;'
-                    f'letter-spacing:.08em;color:#748078">'
-                    f'{html.escape(info["name"])}</div>'
-                    f'<div style="font-size:1.25rem;font-weight:800;'
-                    f'color:{c};font-family:Georgia,serif">'
+                    f'padding:.95rem .7rem">'
+                    f'<div style="font-size:.7rem;font-weight:800;'
+                    f'letter-spacing:.08em;color:#748078;text-transform:'
+                    f'uppercase">{html.escape(info["name"])}{dom_mark}</div>'
+                    f'<div style="font-size:1.35rem;font-weight:800;'
+                    f'color:{c};font-family:var(--serif);margin:.1rem 0">'
                     f'{r.sub_index:.0f}</div>'
-                    f'<div style="font-size:.72rem;color:#748078">'
+                    f'<div style="height:6px;border-radius:3px;'
+                    f'background:#eef1e6;overflow:hidden;margin:.3rem 0 .5rem">'
+                    f'<div style="height:100%;width:{bar_pct:.0f}%;'
+                    f'background:{c};border-radius:3px"></div></div>'
+                    f'<div style="font-size:.74rem;color:#748078">'
                     f'{r.concentration:g} {r.unit} · {info["period"]}</div>'
                     f'</div>', unsafe_allow_html=True)
 
@@ -630,21 +759,26 @@ def assistant_page():
         "Your air companion",
         "Tell us about your routine and get clear, prioritised advice "
         "- with reasons, timing, costs and alternatives.")
+
+    # ---------- companion intro ----------
     st.markdown(
-        '<div class="aw-card" style="display:flex;gap:.7rem;align-items:flex-start">'
-        f'<div class="aw-feat-ico">{ui.icon("sparkles", 22)}</div>'
-        '<div><b>How this works</b><p style="margin:.2rem 0 0">'
-        'Answer a few quick questions about your day. AirAware combines '
-        "today's air reading with your routine to rank what matters "
-        "most - no account, no tracking, answers stay in this session.</p>"
-        '<p class="aw-meta" style="margin:.35rem 0 0">Powered by a '
+        '<div style="display:flex;gap:.9rem;align-items:flex-start;'
+        'margin-bottom:1.2rem">'
+        '<div class="aw-avatar">' + ui.icon("leaf", 22, "#A8BCA3") + '</div>'
+        '<div class="aw-bubble" style="flex:1;margin:0">'
+        '<b>Hi, I\'m AirAware.</b> '
+        '<p style="margin:.3rem 0 0">Answer a few quick questions about '
+        'your day. I\'ll combine today\'s air reading with your routine '
+        'to rank what matters most - no account, no tracking, answers '
+        'stay in this session.</p>'
+        '<p class="aw-meta" style="margin:.4rem 0 0">Powered by a '
         'transparent rule engine'
         + (" + optional Gemini enhancement" if ai.gemini_configured()
            else " · no external AI required") + '</p></div></div>',
         unsafe_allow_html=True)
 
     with st.form("profile_form"):
-        st.markdown('<div class="aw-field-label" style="font-size:1rem">'
+        st.markdown('<div class="aw-field-label" style="font-size:1.05rem">'
                     'A little about you</div>', unsafe_allow_html=True)
         c1, c2 = st.columns(2)
         city = c1.text_input("City or locality (optional)",
@@ -893,26 +1027,28 @@ def planner_page():
         "evening": ("moon", "EVENING"), "night": ("moon", "NIGHT"),
     }
     now_slot = current_time_slot()
-    for p in plan:
-        ic, label = slot_icons.get(p.slot_key, ("calendar", p.slot_label))
-        now_pill = (' <span class="aw-pill" style="background:var(--evergreen);'
-                    'color:#fff">NOW</span>' if p.slot_key == now_slot
-                    else "")
-        st.markdown(
-            f'<div style="display:flex;align-items:center;gap:.5rem;'
-            f'margin:1rem 0 .3rem">'
-            f'<span style="width:30px;height:30px;border-radius:50%;'
-            f'background:var(--mint);color:var(--evergreen);display:inline-flex;'
-            f'align-items:center;justify-content:center">'
-            f'{ui.icon(ic, 15)}</span>'
-            f'<b style="color:var(--forest);font-size:.95rem">'
-            f'{html.escape(label)} — {html.escape(p.focus)}</b>{now_pill}</div>',
-            unsafe_allow_html=True)
-        edited = st.text_area(
-            "Guidance (editable)",
-            value=st.session_state[key].get(p.slot_key, p.guidance),
-            key=f"plan_{p.slot_key}", height=64)
-        st.session_state[key][p.slot_key] = edited
+    with st.container(border=True):
+        for p in plan:
+            ic, label = slot_icons.get(p.slot_key, ("calendar", p.slot_label))
+            now_pill = (' <span class="aw-pill" style="background:var(--evergreen);'
+                        'color:#fff">NOW</span>'
+                        if p.slot_key == now_slot else "")
+            st.markdown(
+                f'<div class="aw-tstep">'
+                f'<div class="when" style="display:flex;align-items:center;'
+                f'gap:.45rem"><span style="width:24px;height:24px;'
+                f'border-radius:50%;background:var(--mint);color:var(--evergreen);'
+                f'display:inline-flex;align-items:center;justify-content:center">'
+                f'{ui.icon(ic, 13)}</span>{html.escape(label)}'
+                f'{now_pill}</div>'
+                f'<h4 style="margin:.25rem 0 .35rem">{html.escape(p.focus)}</h4>'
+                f'</div>',
+                unsafe_allow_html=True)
+            edited = st.text_area(
+                "Guidance (editable)",
+                value=st.session_state[key].get(p.slot_key, p.guidance),
+                key=f"plan_{p.slot_key}", height=64)
+            st.session_state[key][p.slot_key] = edited
 
     st.download_button(
         "Download my plan (CSV)",
@@ -947,27 +1083,46 @@ def indoor_page():
     if m:
         st.caption(_measurement_caption(m))
 
-    ui.section_title("Pick a room")
-    room_cols = st.columns(5)
+    # ---------- illustrated room picker ----------
+    st.markdown('<div class="aw-section-title" style="font-size:1.25rem;'
+                'margin-top:1.2rem">Pick a room</div>',
+                unsafe_allow_html=True)
+    sel = st.session_state.get("indoor_room", ROOMS[0].name)
+    room_cols = st.columns(len(ROOMS))
     for i, r in enumerate(ROOMS):
+        active = r.name == sel
+        border = 'border:2px solid var(--evergreen);' if active else ''
+        bg = 'background:var(--mint);' if active else ''
         with room_cols[i]:
             st.markdown(
-                f'<div style="text-align:center;color:var(--evergreen);'
-                f'margin-bottom:.3rem">{ui.icon(r.icon if r.icon in ui._ICONS else "home", 26)}</div>',
+                f'<div class="aw-card" style="text-align:center;'
+                f'padding:1rem .7rem;{border}{bg}">'
+                f'<div class="aw-feat-ico" style="margin:0 auto .6rem">'
+                f'{ui.icon(r.icon if r.icon in ui._ICONS else "home", 24)}'
+                f'</div>'
+                f'<div style="font-weight:700;color:var(--forest);'
+                f'font-size:.92rem">{html.escape(r.name)}</div></div>',
                 unsafe_allow_html=True)
-            if st.button(r.name, key=f"room_{r.name}",
-                         width="stretch"):
+            if st.button(("✓ " if active else "") + "Tips",
+                         key=f"room_{r.name}", width="stretch"):
                 st.session_state["indoor_room"] = r.name
                 st.rerun()
-    sel = st.session_state.get("indoor_room", ROOMS[0].name)
     room = next(r for r in ROOMS if r.name == sel)
-    ui.card(room.name,
-            body_html="".join(
-                f'<p style="display:flex;gap:.5rem">'
-                f'<span style="color:var(--evergreen)">✓</span>'
-                f'<span>{html.escape(x)}</span></p>' for x in room.priorities) +
-            f'<p class="aw-meta" style="margin-top:.5rem">'
-            f'{html.escape(room.notes)}</p>')
+    st.markdown(
+        f'<div class="aw-card" style="border-left:5px solid var(--evergreen)">'
+        f'<div style="display:flex;align-items:center;gap:.7rem;'
+        f'margin-bottom:.5rem"><div class="aw-feat-ico">'
+        f'{ui.icon(room.icon if room.icon in ui._ICONS else "home", 22)}'
+        f'</div><h4 style="margin:0">{html.escape(room.name)}</h4></div>'
+        + "".join(
+            f'<p style="display:flex;gap:.55rem;align-items:flex-start;'
+            f'margin:.4rem 0">'
+            f'<span style="color:var(--evergreen);flex:none;margin-top:.15rem">'
+            f'{ui.icon("check", 15)}</span>'
+            f'<span>{html.escape(x)}</span></p>' for x in room.priorities)
+        + f'<p class="aw-meta" style="margin-top:.6rem;border-top:1px solid '
+        f'var(--line);padding-top:.6rem">{html.escape(room.notes)}</p></div>',
+        unsafe_allow_html=True)
 
     ui.section_title("Improvements by budget")
     st.caption("Indicative Indian-rupee ranges - prices vary by brand and "
@@ -984,7 +1139,11 @@ def indoor_page():
                     f'margin-bottom:.5rem"><p style="margin:0">'
                     f'{html.escape(item)}</p></div>', unsafe_allow_html=True)
 
-    ui.section_title("Indoor pollution sources to control")
+    st.markdown(
+        '<div class="aw-card" style="border-left:4px solid var(--gold)">'
+        '<h4 style="display:flex;align-items:center;gap:.5rem">'
+        + ui.icon("alert", 20, "#b45309") + ' Sources worth controlling'
+        '</h4></div>', unsafe_allow_html=True)
     sources = [
         ("Cooking", "flask", "Frying and biomass fuels are the biggest "
          "indoor PM2.5 sources."),
@@ -1003,7 +1162,8 @@ def indoor_page():
         for j, (name, ic, txt) in enumerate(sources[i:i + 3]):
             with cols[j]:
                 st.markdown(
-                    f'<div class="aw-card" style="height:100%">'
+                    f'<div class="aw-card" style="height:100%;'
+                    f'padding:1rem 1.1rem">'
                     f'<div class="aw-feat-ico">{ui.icon(ic, 20)}</div>'
                     f'<h4 style="font-size:.92rem">{html.escape(name)}</h4>'
                     f'<p>{html.escape(txt)}</p></div>', unsafe_allow_html=True)
@@ -1021,6 +1181,17 @@ def lifestyle_page():
         "Greener everyday choices",
         "Practical low-emission swaps for transport, energy, waste and "
         "home - each with honest benefits and limitations.")
+
+    # visual intro strip
+    st.markdown(
+        '<div class="aw-card" style="display:flex;gap:1rem;align-items:'
+        'center;padding:1rem 1.4rem">'
+        '<div style="width:64px;height:48px;flex:none;border-radius:12px;'
+        'overflow:hidden">' + ui.scene("transport") + '</div>'
+        '<div><b>Small swaps, measurable difference.</b> '
+        '<span class="aw-meta">Every option shows what it saves, what it '
+        'costs you, and where it works best.</span></div></div>',
+        unsafe_allow_html=True)
 
     profile = st.session_state.get("profile")
     if profile is None:
@@ -1052,11 +1223,24 @@ def lifestyle_page():
         badge = f' <span class="aw-pill">match {score}</span>' \
             if profile and score > 0 else ""
         body = (f"<p>{html.escape(opt.detail)}</p>"
-                f"<p><b>Benefit:</b> {html.escape(opt.benefit)}</p>"
-                f"<p><b>Limitation:</b> {html.escape(opt.limitation)}</p>")
+                f'<div class="aw-bl-grid">'
+                f'<div style="background:var(--mint);border-radius:10px;'
+                f'padding:.5rem .7rem"><div style="font-size:.68rem;'
+                f'font-weight:800;letter-spacing:.08em;color:var(--evergreen);'
+                f'text-transform:uppercase">Benefit</div>'
+                f'<div style="font-size:.85rem">{html.escape(opt.benefit)}'
+                f'</div></div>'
+                f'<div style="background:#fdf6ec;border:1px solid #ecd9ae;'
+                f'border-radius:10px;padding:.5rem .7rem">'
+                f'<div style="font-size:.68rem;font-weight:800;'
+                f'letter-spacing:.08em;color:#8a5a00;text-transform:uppercase">'
+                f'Watch out</div>'
+                f'<div style="font-size:.85rem">{html.escape(opt.limitation)}'
+                f'</div></div></div>')
         if opt.conditions:
-            body += ("<p><b>Applies when:</b> "
-                     + html.escape("; ".join(opt.conditions)) + "</p>")
+            body += ("<p class='aw-meta' style='margin-top:.5rem'><b>Applies "
+                     "when:</b> " + html.escape("; ".join(opt.conditions))
+                     + "</p>")
         ui.card(f"{opt.title}{badge}", body_html=body)
 
 
@@ -1078,101 +1262,128 @@ def impact_page():
                       "transport usually helps both.</p>")
 
     # --- Trip calculator ---
-    st.markdown('<div class="aw-section-title" style="font-size:1.2rem">'
-                'Compare a trip</div>', unsafe_allow_html=True)
-    c1, c2, c3 = st.columns(3)
-    avoided = c1.selectbox("Instead of taking...", list(VEHICLE_FACTORS.keys()),
-                           format_func=lambda k: VEHICLE_FACTORS[k]["label"],
-                           key="imp_avoided")
-    new_mode = c2.selectbox("...I now use...", list(VEHICLE_FACTORS.keys()),
-                            format_func=lambda k: VEHICLE_FACTORS[k]["label"],
-                            index=list(VEHICLE_FACTORS).index("metro"),
-                            key="imp_new")
-    km = c3.number_input("One-way distance (km)", min_value=0.1, value=5.0,
-                         step=0.5, key="imp_km")
+    with st.container(border=True):
+        st.markdown('<div class="aw-section-title" '
+                    'style="font-size:1.2rem;margin:.2rem 0 .8rem;display:flex;'
+                    'align-items:center;gap:.5rem">'
+                    + ui.icon("route", 22) + ' Compare a trip</div>',
+                    unsafe_allow_html=True)
+        c1, c2, c3 = st.columns(3)
+        avoided = c1.selectbox("Instead of taking...", list(VEHICLE_FACTORS.keys()),
+                               format_func=lambda k: VEHICLE_FACTORS[k]["label"],
+                               key="imp_avoided")
+        new_mode = c2.selectbox("...I now use...", list(VEHICLE_FACTORS.keys()),
+                                format_func=lambda k: VEHICLE_FACTORS[k]["label"],
+                                index=list(VEHICLE_FACTORS).index("metro"),
+                                key="imp_new")
+        km = c3.number_input("One-way distance (km)", min_value=0.1, value=5.0,
+                             step=0.5, key="imp_km")
 
-    est = estimate_trip_savings(new_mode, avoided, km)
-    if est["co2e_saved_kg"] < 0:
-        st.warning("This switch would **increase** emissions versus the "
-                   "avoided mode - the estimate is shown honestly below, but "
-                   "it is not a saving.")
-    ui.kpi_row([
-        (f"{est['co2e_saved_kg']:.1f} kg", "CO₂e saved / trip"),
-        (f"{est['fuel_saved_litres']} L" if est['fuel_saved_litres'] is not None else "-",
-         "Fuel saved"),
-        (f"₹{est['fuel_cost_saved_inr']:.0f}" if est['fuel_cost_saved_inr'] is not None else "-",
-         "Fuel cost saved"),
-    ])
-    with st.expander("Assumptions used for this estimate"):
-        st.json(est["assumptions"])
-
-    if st.button("Log this as a completed action", key="imp_log_trip"):
-        acts = st.session_state.setdefault("impact_actions", [])
-        acts.append(ImpactAction(
-            action_type="trip",
-            description=f"{VEHICLE_FACTORS[new_mode]['label']} instead of "
-                        f"{VEHICLE_FACTORS[avoided]['label']} for {km} km",
-            vehicle=new_mode, avoided_vehicle=avoided, distance_km=km,
-            cost_saved_inr=est['fuel_cost_saved_inr'],
-            date=datetime.now(timezone.utc).strftime("%Y-%m-%d")))
-        st.success("Action logged.")
-
-    # --- AC savings ---
-    st.markdown('<div class="aw-section-title" style="font-size:1.2rem">'
-                'Air-conditioning savings estimate</div>',
-                unsafe_allow_html=True)
-    hrs = st.number_input("Hours of AC avoided per day (e.g. fan instead, "
-                          "higher setpoint)", min_value=0.0, value=2.0, step=0.5,
-                          key="imp_ac")
-    if hrs > 0:
-        ac = estimate_ac_savings(hrs)
+        est = estimate_trip_savings(new_mode, avoided, km)
+        if est["co2e_saved_kg"] < 0:
+            st.warning("This switch would **increase** emissions versus the "
+                       "avoided mode - the estimate is shown honestly below, but "
+                       "it is not a saving.")
         ui.kpi_row([
-            (f"{ac['kwh_saved_per_year']:.0f} kWh", "Saved / year"),
-            (f"{ac['co2e_saved_kg_per_year']:.0f} kg", "CO₂e / year"),
-            (f"₹{ac['indicative_cost_saved_inr_per_year']:.0f}", "Cost / year (indicative)"),
+            (f"{est['co2e_saved_kg']:.1f} kg", "CO₂e saved / trip"),
+            (f"{est['fuel_saved_litres']} L" if est['fuel_saved_litres'] is not None else "-",
+             "Fuel saved"),
+            (f"₹{est['fuel_cost_saved_inr']:.0f}" if est['fuel_cost_saved_inr'] is not None else "-",
+             "Fuel cost saved"),
         ])
-        if st.button("Log AC savings for today", key="imp_log_ac"):
+        with st.expander("Assumptions used for this estimate"):
+            st.json(est["assumptions"])
+
+        if st.button("Log this as a completed action", key="imp_log_trip"):
             acts = st.session_state.setdefault("impact_actions", [])
             acts.append(ImpactAction(
-                action_type="energy",
-                description=f"Avoided {hrs} h/day of AC use",
-                kwh_saved=ac["kwh_saved_per_day"],
-                cost_saved_inr=ac["indicative_cost_saved_inr_per_year"] / 365,
+                action_type="trip",
+                description=f"{VEHICLE_FACTORS[new_mode]['label']} instead of "
+                            f"{VEHICLE_FACTORS[avoided]['label']} for {km} km",
+                vehicle=new_mode, avoided_vehicle=avoided, distance_km=km,
+                cost_saved_inr=est['fuel_cost_saved_inr'],
                 date=datetime.now(timezone.utc).strftime("%Y-%m-%d")))
-            st.success("Logged.")
+            st.success("Action logged.")
+
+    # --- AC savings ---
+    with st.container(border=True):
+        st.markdown('<div class="aw-section-title" '
+                    'style="font-size:1.2rem;margin:.2rem 0 .8rem;display:flex;'
+                    'align-items:center;gap:.5rem">'
+                    + ui.icon("bolt", 22) + ' Air-conditioning savings '
+                    'estimate</div>', unsafe_allow_html=True)
+        hrs = st.number_input("Hours of AC avoided per day (e.g. fan instead, "
+                              "higher setpoint)", min_value=0.0, value=2.0, step=0.5,
+                              key="imp_ac")
+        if hrs > 0:
+            ac = estimate_ac_savings(hrs)
+            ui.kpi_row([
+                (f"{ac['kwh_saved_per_year']:.0f} kWh", "Saved / year"),
+                (f"{ac['co2e_saved_kg_per_year']:.0f} kg", "CO₂e / year"),
+                (f"₹{ac['indicative_cost_saved_inr_per_year']:.0f}", "Cost / year (indicative)"),
+            ])
+            if st.button("Log AC savings for today", key="imp_log_ac"):
+                acts = st.session_state.setdefault("impact_actions", [])
+                acts.append(ImpactAction(
+                    action_type="energy",
+                    description=f"Avoided {hrs} h/day of AC use",
+                    kwh_saved=ac["kwh_saved_per_day"],
+                    cost_saved_inr=ac["indicative_cost_saved_inr_per_year"] / 365,
+                    date=datetime.now(timezone.utc).strftime("%Y-%m-%d")))
+                st.success("Logged.")
 
     # --- Log ---
-    st.markdown('<div class="aw-section-title" style="font-size:1.2rem">'
-                'Your logged actions</div>', unsafe_allow_html=True)
-    acts: list[ImpactAction] = st.session_state.get("impact_actions", [])
-    if not acts:
-        st.caption("Nothing logged yet - use the calculators above.")
-    else:
-        summ = summarise_actions(acts)
-        ui.kpi_row([
-            (f"{summ['total_actions']}", "Actions logged"),
-            (f"{summ['total_co2e_saved_kg']:.1f} kg", "Est. CO₂e saved"),
-            (f"{summ['trip_km']:.0f} km", "Green km"),
-            (f"₹{summ['indicative_cost_saved_inr']:.0f}", "Indicative ₹ saved"),
-        ])
-        # simple cumulative chart
-        daily: dict[str, float] = {}
-        for a in acts:
-            daily[a.date or "undated"] = daily.get(a.date or "undated", 0) + a.co2e_kg()
-        if len(daily) > 1:
-            chart_df = pd.DataFrame(
-                sorted(daily.items()), columns=["date", "co2e_kg"])
-            st.bar_chart(chart_df.set_index("date"), height=220)
-        st.dataframe(pd.DataFrame([a.as_dict() for a in acts]),
-                     width="stretch")
-        c1, c2 = st.columns(2)
-        c1.download_button("Download impact report (CSV)",
-                           data=actions_to_csv(acts),
-                           file_name="airaware_impact_report.csv",
-                           mime="text/csv", key="imp_dl")
-        if c2.button("Clear log", key="imp_clear"):
-            st.session_state["impact_actions"] = []
-            st.rerun()
+    with st.container(border=True):
+        st.markdown('<div class="aw-section-title" '
+                    'style="font-size:1.2rem;margin:.2rem 0 .8rem;display:flex;'
+                    'align-items:center;gap:.5rem">'
+                    + ui.icon("chart", 22) + ' Your impact dashboard</div>',
+                    unsafe_allow_html=True)
+        acts: list[ImpactAction] = st.session_state.get("impact_actions", [])
+        if not acts:
+            ui.empty_state("Nothing logged yet - use the calculators above "
+                           "to start your impact story.", icon_name="chart")
+        else:
+            summ = summarise_actions(acts)
+            ui.kpi_row([
+                (f"{summ['total_actions']}", "Actions logged"),
+                (f"{summ['total_co2e_saved_kg']:.1f} kg", "Est. CO₂e saved"),
+                (f"{summ['trip_km']:.0f} km", "Green km"),
+                (f"₹{summ['indicative_cost_saved_inr']:.0f}", "Indicative ₹ saved"),
+            ])
+            # simple cumulative chart
+            daily: dict[str, float] = {}
+            for a in acts:
+                daily[a.date or "undated"] = daily.get(a.date or "undated", 0) + a.co2e_kg()
+            if len(daily) > 1:
+                chart_df = pd.DataFrame(
+                    sorted(daily.items()), columns=["date", "co2e_kg"])
+                st.bar_chart(chart_df.set_index("date"), height=220)
+            st.dataframe(pd.DataFrame([a.as_dict() for a in acts]),
+                         width="stretch")
+            c1, c2 = st.columns(2)
+            c1.download_button("Download impact report (CSV)",
+                               data=actions_to_csv(acts),
+                               file_name="airaware_impact_report.csv",
+                               mime="text/csv", key="imp_dl")
+            if c2.button("Clear log", key="imp_clear"):
+                st.session_state["impact_actions"] = []
+                st.rerun()
+
+    # tree-equivalent flourish for logged CO2e
+    acts = st.session_state.get("impact_actions", [])
+    if acts:
+        total = sum(a.co2e_kg() for a in acts)
+        trees = total / 21.0  # ~21 kg CO2 absorbed per tree per year
+        st.markdown(
+            f'<div class="aw-card aw-card--mint" style="display:flex;'
+            f'gap:.8rem;align-items:center">'
+            f'<div class="aw-feat-ico">{ui.icon("tree", 24)}</div>'
+            f'<div><b>That\'s roughly {trees:.0f} tree'
+            f'{"s" if trees != 1 else ""} worth of CO₂e</b> '
+            f'<span class="aw-meta">(one tree absorbs ~21 kg CO₂e/year '
+            f'- a simple visual comparison, not a precise offset).</span>'
+            f'</div></div>', unsafe_allow_html=True)
 
     st.caption("Vehicle factors are generic estimates; real savings depend "
                "on your vehicle, driving style and occupancy. Grid factor: "
@@ -1190,8 +1401,6 @@ def community_page():
         "Household habits add up - checklists, kid-friendly explanations "
         "and ideas for your neighbourhood.")
 
-    st.markdown('<div class="aw-section-title" style="font-size:1.2rem">'
-                'Household air-quality checklist</div>', unsafe_allow_html=True)
     checklist_items = [
         "Keep windows closed on Poor-or-worse days; ventilate on clean days",
         "Run the kitchen exhaust fan for every cooking session",
@@ -1204,44 +1413,58 @@ def community_page():
         "Plan school/office commutes around peak traffic where possible",
     ]
     done = st.session_state.setdefault("community_checklist", {})
-    for i, item in enumerate(checklist_items):
-        done[i] = st.checkbox(item, value=done.get(i, False), key=f"chk_{i}")
-    pct = sum(done.values()) / len(checklist_items) * 100
-    st.progress(pct / 100, text=f"{pct:.0f}% complete")
+    pct = sum(done.get(i, False) for i in range(len(checklist_items))) \
+        / len(checklist_items) * 100
+    st.markdown(
+        '<div class="aw-card" style="display:flex;justify-content:'
+        'space-between;align-items:center;flex-wrap:wrap;gap:.6rem">'
+        '<div><h4 style="margin:0">Household air-quality checklist</h4>'
+        '<p class="aw-meta" style="margin:.2rem 0 0">Tick what your '
+        'household already does - every item makes a difference.</p></div>'
+        f'<div class="aw-chip" style="font-size:.9rem">{pct:.0f}% done</div>'
+        '</div>', unsafe_allow_html=True)
+    with st.container(border=True):
+        for i, item in enumerate(checklist_items):
+            done[i] = st.checkbox(item, value=done.get(i, False),
+                                  key=f"chk_{i}")
+    st.progress(pct / 100, text=f"{pct:.0f}% of the checklist complete")
 
     ui.section_title("For children - a simple explanation")
-    ui.card("Why the air matters",
-            body_html='<p style="display:flex;gap:.5rem;align-items:flex-start">'
-                      f'<span style="color:var(--evergreen);flex:none">'
-                      f'{ui.icon("heart", 18)}</span><span>'
-                      "Air pollution is like tiny invisible dust floating "
-                      "in the air. Some days there is more of it - we can "
-                      "see it as haze. When the air is bad, our lungs work "
-                      "harder, just like running up stairs. We can help by "
-                      "<b>walking or cycling</b> to nearby places (cleaner "
-                      "than cars), <b>closing windows</b> on smoky days, and "
-                      "<b>saving electricity</b> so power plants burn less "
-                      "fuel.</span></p>")
+    st.markdown(
+        '<div style="display:flex;gap:.9rem;align-items:flex-start">'
+        '<div class="aw-avatar">' + ui.icon("child", 22, "#A8BCA3") + '</div>'
+        '<div class="aw-bubble" style="flex:1;margin:0">'
+        '<b>Hey! Want to know why we check the air?</b>'
+        '<p style="margin:.4rem 0 0">Air pollution is like tiny invisible '
+        'dust floating in the air. Some days there is more of it - we can '
+        'see it as haze. When the air is bad, our lungs work harder, just '
+        'like running up stairs. We can help by <b>walking or cycling</b> '
+        'to nearby places (cleaner than cars), <b>closing windows</b> on '
+        'smoky days, and <b>saving electricity</b> so power plants burn '
+        'less fuel.</p></div></div>',
+        unsafe_allow_html=True)
 
     ui.section_title("Community action ideas")
     ideas = [
-        ("Car-free day", "One day a week where the household uses only "
-         "walking, cycling or transit."),
-        ("Neighbourhood clean-up", "Collect roadside waste before it is "
-         "burned."),
-        ("Tree drive", "Coordinate with your RWAs or school for native "
-         "saplings."),
-        ("School awareness", "Share the kids' explainer with teachers; "
-         "many schools run 'clean commute' weeks."),
-        ("Report violations", "Dusty construction without sprinkling or "
-         "open garbage burning; log them on your municipal app."),
+        ("Car-free day", "route", "One day a week where the household uses "
+         "only walking, cycling or transit."),
+        ("Neighbourhood clean-up", "trash", "Collect roadside waste before "
+         "it is burned."),
+        ("Tree drive", "tree", "Coordinate with your RWAs or school for "
+         "native saplings."),
+        ("School awareness", "book", "Share the kids' explainer with "
+         "teachers; many schools run 'clean commute' weeks."),
+        ("Report violations", "alert", "Dusty construction without "
+         "sprinkling or open garbage burning; log them on your municipal "
+         "app."),
     ]
     for i in range(0, len(ideas), 3):
         cols = st.columns(3)
-        for j, (name, txt) in enumerate(ideas[i:i + 3]):
+        for j, (name, ic, txt) in enumerate(ideas[i:i + 3]):
             with cols[j]:
                 st.markdown(
                     f'<div class="aw-card" style="height:100%">'
+                    f'<div class="aw-feat-ico">{ui.icon(ic, 20)}</div>'
                     f'<h4 style="font-size:.92rem">{html.escape(name)}</h4>'
                     f'<p>{html.escape(txt)}</p></div>', unsafe_allow_html=True)
 
@@ -1272,33 +1495,80 @@ def about_page():
         "The methodology, assumptions and honest limitations behind "
         "every number AirAware shows you.")
 
-    st.markdown("### How AQI is calculated")
+    # ---------- editorial methodology ----------
     st.markdown(
-        "AirAware AI implements the **CPCB National Air Quality Index "
-        "(NAQI)** method: each measured pollutant (PM2.5, PM10, NO₂, SO₂, "
-        "CO, O₃, NH₃) is converted to a sub-index via published "
-        "concentration breakpoints using piecewise-linear interpolation. "
-        "The overall AQI is the **maximum** sub-index and that pollutant is "
-        "the dominant one. Averaging periods follow CPCB (24-hour, 8-hour "
-        "for O₃). Partial measurements are labelled as partial - the true "
-        "AQI could be higher.\n\n"
-        "Categories: Good (0-50) · Satisfactory (51-100) · Moderate "
-        "(101-200) · Poor (201-300) · Very Poor (301-400) · Severe "
-        "(401-500) · Severe+ (>500).")
+        '<div class="aw-card" style="border-left:5px solid var(--evergreen)">'
+        '<h4>Our promise: honest numbers</h4>'
+        '<p>Every reading shows where it came from, how old it is, and '
+        'how complete it is. Sample data is always labelled. Estimates '
+        'are labelled as estimates. If we don\'t know, we say so.</p></div>',
+        unsafe_allow_html=True)
 
-    st.markdown("### Live data providers")
+    st.markdown('<div class="aw-section-title" style="font-size:1.3rem">'
+                'How your AQI is calculated</div>', unsafe_allow_html=True)
+    steps = [
+        ("1", "Measure", "You provide pollutant concentrations "
+         "(PM2.5, PM10, NO₂, SO₂, CO, O₃, NH₃) - by typing them in, "
+         "uploading a CSV, or fetching a live station reading."),
+        ("2", "Convert", "Each pollutant is mapped to a sub-index using "
+         "published CPCB concentration breakpoints, with piecewise-linear "
+         "interpolation."),
+        ("3", "Combine", "The overall AQI is the <b>maximum</b> "
+         "sub-index - one bad pollutant sets the whole index. That "
+         "pollutant is flagged as the dominant one."),
+        ("4", "Explain", "The number becomes guidance: what to do today, "
+         "how to protect your home, and which swaps help most."),
+    ]
+    cells = "".join(
+        f'<div class="aw-kpi" style="text-align:left;padding:1rem 1.1rem">'
+        f'<div class="aw-feat-ico" style="width:34px;height:34px;'
+        f'border-radius:10px;font-weight:800;font-family:var(--serif);'
+        f'font-size:1rem">{n}</div>'
+        f'<div style="font-weight:700;color:var(--forest);font-size:.9rem;'
+        f'margin:.3rem 0 .15rem">{t}</div>'
+        f'<div style="font-size:.82rem;color:var(--muted);line-height:1.5">'
+        f'{d}</div></div>' for n, t, d in steps)
+    st.markdown(f'<div class="aw-grid" style="grid-template-columns:'
+                f'repeat(auto-fit,minmax(210px,1fr))">{cells}</div>',
+                unsafe_allow_html=True)
+
+    with st.expander("Technical details: CPCB breakpoints & categories"):
+        st.markdown(
+            "AirAware AI implements the **CPCB National Air Quality Index "
+            "(NAQI)** method: each measured pollutant (PM2.5, PM10, NO₂, "
+            "SO₂, CO, O₃, NH₃) is converted to a sub-index via published "
+            "concentration breakpoints using piecewise-linear "
+            "interpolation. The overall AQI is the **maximum** sub-index "
+            "and that pollutant is the dominant one. Averaging periods "
+            "follow CPCB (24-hour, 8-hour for O₃). Partial measurements "
+            "are labelled as partial - the true AQI could be higher.\n\n"
+            "Categories: Good (0-50) · Satisfactory (51-100) · Moderate "
+            "(101-200) · Poor (201-300) · Very Poor (301-400) · Severe "
+            "(401-500) · Severe+ (>500).")
+
+    # ---------- live providers ----------
+    st.markdown('<div class="aw-section-title" style="font-size:1.3rem">'
+                'Live data providers</div>', unsafe_allow_html=True)
     status = providers.provider_status()
     if status:
         for s in status:
-            if s["configured"] and s["health"] and s["health"]["ok"]:
-                st.caption(f"- **{s['name']}**: configured - "
-                           f"{s['health']['detail']}")
-            elif s["configured"]:
-                st.warning(f"- **{s['name']}**: configured but unhealthy - "
-                           f"{(s['health'] or {}).get('detail', 'unreachable')}")
-            else:
-                st.caption(f"- **{s['name']}**: not configured "
-                           f"(set `{s['name'].upper()}_API_KEY` in secrets to enable)")
+            ok = s["configured"] and s["health"] and s["health"]["ok"]
+            icon_name = "check" if ok else ("alert" if s["configured"]
+                                             else "minus")
+            color = "var(--good)" if ok else ("var(--warn)"
+                                              if s["configured"]
+                                              else "var(--muted)")
+            detail = (s["health"] or {}).get("detail", "") if s["health"] \
+                else ""
+            st.markdown(
+                f'<div class="aw-card" style="display:flex;gap:.7rem;'
+                f'align-items:flex-start;padding:.9rem 1.2rem">'
+                f'<span style="color:{color};flex:none;margin-top:.15rem">'
+                f'{ui.icon(icon_name, 20)}</span>'
+                f'<div><b>{html.escape(s["name"])}</b> — '
+                f'<span style="color:var(--muted)">'
+                f'{html.escape(detail or ("configured" if s["configured"] else "not configured"))}</span>'
+                f'</div></div>', unsafe_allow_html=True)
     else:
         st.caption("No live providers configured. Add `OPENAQ_API_KEY` to "
                    "`.streamlit/secrets.toml` to enable live fetches; "
@@ -1308,49 +1578,71 @@ def about_page():
                "station name. Stale readings are labelled, never passed "
                "off as current.")
 
-    st.markdown("### Data sources & provenance")
-    st.markdown(
-        "- **Your entries** - treated as user-provided, unverified.\n"
-        "- **CSV imports** - parsed and validated locally; nothing uploaded.\n"
-        "- **Sample data** - illustrative demo values, always labelled.\n"
-        "- **Live provider data** - fetched on demand from configured "
-        "providers (OpenAQ), timestamped and station-attributed.\n\n"
-        "Every measurement records value, unit, source and timestamp.")
+    # ---------- provenance ----------
+    st.markdown('<div class="aw-section-title" style="font-size:1.3rem">'
+                'Where your data comes from</div>', unsafe_allow_html=True)
+    prov = [
+        ("Your entries", "user", "What you type is treated as "
+         "user-provided and unverified."),
+        ("CSV imports", "upload", "Parsed and validated locally; "
+         "nothing is uploaded anywhere."),
+        ("Sample data", "eye", "Illustrative demo values, always "
+         "labelled as samples."),
+        ("Live providers", "activity", "Fetched on demand (e.g. OpenAQ), "
+         "timestamped and station-attributed."),
+    ]
+    pcols = st.columns(2)
+    for i, (name, ic, txt) in enumerate(prov):
+        with pcols[i % 2]:
+            st.markdown(
+                f'<div class="aw-card" style="display:flex;gap:.7rem;'
+                f'align-items:flex-start;padding:.9rem 1.1rem">'
+                f'<div class="aw-feat-ico" style="width:38px;height:38px;'
+                f'border-radius:11px">{ui.icon(ic, 19)}</div>'
+                f'<div><b style="color:var(--forest)">{html.escape(name)}'
+                f'</b><p style="margin:.15rem 0 0">{html.escape(txt)}</p>'
+                f'</div></div>', unsafe_allow_html=True)
+    st.caption("Every measurement records value, unit, source and "
+               "timestamp.")
 
-    st.markdown("### Recommendation methodology")
-    st.markdown(
-        "Recommendations come from a deterministic Python rule engine "
-        "mapping AQI category + dominant pollutant + your profile to "
-        "actionable guidance. Every item shows what to do, why it matters, "
-        "when, approximate cost and an alternative where meaningful.\n\n"
-        "**Optional AI:** if `GEMINI_API_KEY` is configured in Streamlit "
-        "secrets, an AI provider (Gemini) can rewrite the briefing in "
-        "natural language. Output is always labelled *AI-generated*; without "
-        "the key, the rule engine alone powers the app. No other AI service "
-        "is used or claimed.")
-
-    st.markdown("### Impact calculation assumptions")
-    st.markdown(
-        "Vehicle CO₂e factors are generic estimates (petrol car ≈0.19 "
-        "kg/km, electric car ≈0.10 kg/km on the Indian grid, metro "
-        "≈0.02 kg/passenger-km). Grid intensity ≈0.82 kg CO₂/kWh. Fuel "
-        "prices and economy are defaults you can override. Figures are "
-        "estimates of climate benefit, not measured reductions.")
-
-    st.markdown("### Technology")
-    st.markdown("Python 3.14 · Streamlit · pandas · plotly · optional "
-                "Gemini API (stdlib urllib only). No database, no required "
-                "API keys, no paid services. State lives in your browser "
-                "session; reports are downloadable files.")
-
-    st.markdown("### Limitations & future work")
-    st.markdown(
-        "- Live fetch requires a provider API key; without one the app "
-        "relies on manual entry, CSV import or labelled samples.\n"
-        "- Recommendations are rule-based, not ML-personalised.\n"
-        "- Indoor guidance is qualitative; a real PM2.5 sensor would enable "
-        "quantitative tracking.\n"
-        "- Hourly pollution is not predicted; plans adapt to the current "
-        "reading only.\n"
-        "- Future: CPCB/OpenAQ live fetch, multi-day exposure logging, "
-        "household sharing.")
+    # ---------- remaining methodology (expandable) ----------
+    st.markdown('<div class="aw-section-title" style="font-size:1.3rem">'
+                'Deeper details</div>', unsafe_allow_html=True)
+    with st.expander("Recommendation methodology"):
+        st.markdown(
+            "Recommendations come from a deterministic Python rule "
+            "engine mapping AQI category + dominant pollutant + your "
+            "profile to actionable guidance. Every item shows what to "
+            "do, why it matters, when, approximate cost and an "
+            "alternative where meaningful.\n\n"
+            "**Optional AI:** if `GEMINI_API_KEY` is configured in "
+            "Streamlit secrets, an AI provider (Gemini) can rewrite the "
+            "briefing in natural language. Output is always labelled "
+            "*AI-generated*; without the key, the rule engine alone "
+            "powers the app. No other AI service is used or claimed.")
+    with st.expander("Impact calculation assumptions"):
+        st.markdown(
+            "Vehicle CO₂e factors are generic estimates (petrol car "
+            "≈0.19 kg/km, electric car ≈0.10 kg/km on the Indian grid, "
+            "metro ≈0.02 kg/passenger-km). Grid intensity ≈0.82 kg "
+            "CO₂/kWh. Fuel prices and economy are defaults you can "
+            "override. Figures are estimates of climate benefit, not "
+            "measured reductions.")
+    with st.expander("Technology"):
+        st.markdown("Python 3.14 · Streamlit · pandas · plotly · "
+                    "optional Gemini API (stdlib urllib only). No "
+                    "database, no required API keys, no paid services. "
+                    "State lives in your browser session; reports are "
+                    "downloadable files.")
+    with st.expander("Limitations & future work"):
+        st.markdown(
+            "- Live fetch requires a provider API key; without one the "
+            "app relies on manual entry, CSV import or labelled "
+            "samples.\n"
+            "- Recommendations are rule-based, not ML-personalised.\n"
+            "- Indoor guidance is qualitative; a real PM2.5 sensor "
+            "would enable quantitative tracking.\n"
+            "- Hourly pollution is not predicted; plans adapt to the "
+            "current reading only.\n"
+            "- Future: CPCB/OpenAQ live fetch, multi-day exposure "
+            "logging, household sharing.")

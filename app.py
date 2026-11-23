@@ -37,32 +37,87 @@ PAGE_FN = {
     "About & Data Sources": pages.about_page,
 }
 
-# Navigation groups keep the sidebar scannable as the app grows.
+# Navigation groups keep the sidebar scannable and purposeful.
 NAV_GROUPS = [
-    ("Begin", "leaf", ["Home", "Air Quality Explorer"]),
-    ("Your wellbeing", "heart", ["Personal AI Assistant", "My Daily Air Plan"]),
-    ("Your surroundings", "home", ["Indoor Air Guardian", "Green Lifestyle Planner"]),
-    ("Impact & community", "users", ["Environmental Impact", "Family & Community"]),
+    ("Discover", "compass", ["Home", "Air Quality Explorer"]),
+    ("Understand your air", "eye", ["Personal AI Assistant", "My Daily Air Plan"]),
+    ("Improve your environment", "sprout",
+     ["Indoor Air Guardian", "Green Lifestyle Planner"]),
+    ("Track your impact", "chart",
+     ["Environmental Impact", "Family & Community"]),
     ("About", "info", ["About & Data Sources"]),
 ]
+
+# Emoji icons keep the nav icon family consistent and dependency-free.
+NAV_ICONS = {
+    "Home": "🌿",
+    "Air Quality Explorer": "🌫️",
+    "Personal AI Assistant": "✨",
+    "My Daily Air Plan": "📅",
+    "Indoor Air Guardian": "🏠",
+    "Green Lifestyle Planner": "♻️",
+    "Environmental Impact": "🌍",
+    "Family & Community": "👨‍👩‍👧",
+    "About & Data Sources": "📖",
+}
 
 
 def _brand():
     st.sidebar.markdown(
-        '<div style="display:flex;align-items:center;gap:.6rem;'
-        'padding:.4rem .2rem 1rem">'
-        '<div style="width:38px;height:38px;border-radius:11px;flex:none;'
-        'background:#153D32;color:#A8BCA3;display:flex;align-items:center;'
-        'justify-content:center">' + ui.icon("leaf", 22) + '</div>'
-        '<div><div style="font-family:Georgia,serif;font-size:1.25rem;'
-        'font-weight:700;color:#153D32;line-height:1">AirAware</div>'
-        '<div style="font-size:.72rem;color:#748078;margin-top:.15rem">'
+        '<div style="display:flex;align-items:center;gap:.65rem;'
+        'padding:.3rem .2rem 1.1rem">'
+        '<div style="width:40px;height:40px;border-radius:12px;flex:none;'
+        'background:#173E32;color:#A8BCA3;display:flex;align-items:center;'
+        'justify-content:center">' + ui.icon("leaf", 23) + '</div>'
+        '<div><div style="font-family:Georgia,serif;font-size:1.3rem;'
+        'font-weight:700;color:#173E32;line-height:1">AirAware</div>'
+        '<div style="font-size:.72rem;color:#748078;margin-top:.18rem">'
         'Breathe smarter. Live better.</div></div></div>',
         unsafe_allow_html=True)
 
 
+def _aqi_summary():
+    """Compact reading card pinned near the top of the nav flow."""
+    m = st.session_state.get("measurement")
+    if m and m.display_aqi is not None:
+        cat_color = category_color(m.category_name)
+        st.sidebar.markdown(
+            '<div style="background:#fff;border:1px solid var(--line);'
+            'border-radius:14px;padding:.85rem 1rem;margin-bottom:.4rem;'
+            'box-shadow:var(--shadow)">'
+            '<div style="display:flex;align-items:center;justify-content:'
+            'space-between">'
+            f'<span style="font-family:Georgia,serif;font-size:1.6rem;'
+            f'font-weight:700;color:{cat_color}">{m.display_aqi:.0f}</span>'
+            f'<span class="aw-badge" style="background:{cat_color}">'
+            f'{html.escape(m.category_name or "")}</span></div>'
+            f'<div class="aw-meta" style="margin-top:.3rem">'
+            f'{html.escape(m.location or "")} · '
+            f'{m.timestamp.strftime("%d %b %H:%M UTC")}</div></div>',
+            unsafe_allow_html=True)
+        if m.is_sample:
+            st.sidebar.caption("Sample data — not a live reading.")
+        elif m.source == "user":
+            st.sidebar.caption("Your own entry.")
+        else:
+            st.sidebar.caption(m.source_label)
+    else:
+        st.sidebar.markdown(
+            '<div style="background:var(--mint);border:1px dashed '
+            'var(--sage-soft);border-radius:14px;padding:.8rem 1rem;'
+            'margin-bottom:.4rem;font-size:.82rem;color:var(--muted)">'
+            'No reading yet — takes under a minute to check.</div>',
+            unsafe_allow_html=True)
+        if st.sidebar.button("Start air-quality check", key="sb_start",
+                             width="stretch"):
+            st.session_state["nav_page"] = "Home"
+            st.session_state["home_entry"] = "manual"
+            st.rerun()
+
+
 def _sidebar():
     _brand()
+    _aqi_summary()
 
     current = st.session_state.get("nav_page", "Home")
     for group, gicon, items in NAV_GROUPS:
@@ -71,41 +126,16 @@ def _sidebar():
             f'<span>{html.escape(group.upper())}</span></div>',
             unsafe_allow_html=True)
         for label in items:
+            # Buttons keep the existing navbtn_* keys and behaviour; the
+            # active item is styled via the primary button kind.
             if st.sidebar.button(
                     label, key=f"navbtn_{label}",
                     type="primary" if label == current else "secondary",
-                    width="stretch"):
+                    width="stretch", icon=NAV_ICONS.get(label)):
                 st.session_state["nav_page"] = label
                 st.rerun()
-        st.sidebar.markdown('<div style="height:.55rem"></div>',
+        st.sidebar.markdown('<div style="height:.5rem"></div>',
                             unsafe_allow_html=True)
-
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("**Your current reading**")
-    m = st.session_state.get("measurement")
-    if m and m.display_aqi is not None:
-        st.sidebar.markdown(
-            '<div class="aw-card" style="padding:.85rem 1rem;margin-bottom:.6rem">'
-            '<div style="display:flex;align-items:baseline;gap:.4rem">'
-            f'<span style="font-size:1.5rem;font-weight:800;'
-            f'color:{category_color(m.category_name)};'
-            f'font-family:Georgia,serif">{m.display_aqi:.0f}</span>'
-            f'<span style="font-size:.78rem;font-weight:700">'
-            f'{html.escape(m.category_name or "")}</span></div>'
-            f'<div style="font-size:.75rem;color:#748078;margin-top:.15rem">'
-            f'{html.escape(m.location or "")} · '
-            f'{m.timestamp.strftime("%Y-%m-%d %H:%M UTC")} · '
-            f'{html.escape(m.source_label)}</div></div>',
-            unsafe_allow_html=True)
-        if m.is_sample:
-            st.sidebar.caption("Sample data — not a live reading.")
-    else:
-        st.sidebar.caption("No reading yet — start a check on Home.")
-        if st.sidebar.button("Start air-quality check", key="sb_start",
-                             width="stretch"):
-            st.session_state["nav_page"] = "Home"
-            st.session_state["home_entry"] = "manual"
-            st.rerun()
 
     st.sidebar.markdown("---")
     st.sidebar.caption("AirAware AI · CPCB AQI methodology · offline-first")

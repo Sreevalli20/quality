@@ -162,6 +162,59 @@ class TestSecurityAndLiveFetch:
         assert at.session_state["nav_page"] == "Air Quality Explorer"
 
 
+class TestDesignSystemRegression:
+    """Guard the redesigned presentation layer: nav groups, AQI summary,
+    illustrations and new page compositions must keep rendering."""
+
+    def test_nav_groups_render(self):
+        at = _app()
+        labels = [m.value for m in at.sidebar.markdown]
+        joined = "\n".join(labels)
+        for group in ("DISCOVER", "UNDERSTAND YOUR AIR",
+                      "IMPROVE YOUR ENVIRONMENT", "TRACK YOUR IMPACT"):
+            assert group in joined
+
+    def test_home_shows_illustrations_and_sample_label(self):
+        at = _app()
+        at.run()
+        html_out = "\n".join(m.value for m in at.markdown)
+        assert 'class="scene"' in html_out
+        assert "Sample reading" in html_out
+        assert "not a live reading" in html_out.lower()
+
+    def test_sidebar_aqi_summary_with_measurement(self):
+        at = _app(measurement=SAMPLE_MEASUREMENTS[1])
+        at.run()
+        labels = [m.value for m in at.sidebar.markdown]
+        joined = "\n".join(labels)
+        assert SAMPLE_MEASUREMENTS[1].category_name in joined
+        assert SAMPLE_MEASUREMENTS[1].location.split(" (")[0] in joined
+
+    def test_entry_cards_have_sample_preview(self):
+        at = _app()
+        at.run()
+        html_out = "\n".join(m.value for m in at.markdown)
+        assert "Sample cities" in html_out
+
+    def test_planner_timeline_steps(self):
+        at = _app(measurement=SAMPLE_MEASUREMENTS[0])
+        _goto(at, "My Daily Air Plan")
+        html_out = "\n".join(m.value for m in at.markdown)
+        assert html_out.count('class="aw-tstep"') >= 6
+
+    def test_community_checklist_in_border(self):
+        at = _app(measurement=SAMPLE_MEASUREMENTS[0])
+        _goto(at, "Family & Community")
+        assert len(at.checkbox) >= 9
+
+    def test_impact_dashboard_sections(self):
+        at = _app(measurement=SAMPLE_MEASUREMENTS[0])
+        _goto(at, "Environmental Impact")
+        text = "\n".join(m.value for m in at.markdown)
+        assert "Compare a trip" in text
+        assert "impact dashboard" in text
+
+
 class TestPlannerAndCommunity:
     def test_plan_textareas_render(self):
         at = _app(measurement=SAMPLE_MEASUREMENTS[2])
