@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional
 
-from .aqi import AqiResult, is_outdoor_safe
+from .aqi import is_outdoor_safe
 from .data import MeasurementSet
 
 

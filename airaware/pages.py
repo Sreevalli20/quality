@@ -2,16 +2,15 @@
 
 from __future__ import annotations
 
-import io
 from datetime import datetime, timezone
 
 import pandas as pd
 import streamlit as st
 
 from . import charts, ui
-from .aqi import POLLUTANTS, calculate_aqi, category_color, is_outdoor_safe
+from .aqi import POLLUTANTS
 from .alerts import SEVERITY_META, evaluate_alerts
-from .data import (INDIAN_CITIES, SAMPLE_MEASUREMENTS, MeasurementSet,
+from .data import (INDIAN_CITIES, MeasurementSet,
                    parse_measurements_csv)
 from .indoor import BUDGET_TIERS, ROOMS, ventilation_advice
 from .impact import (INDIAN_GRID_KG_CO2_PER_KWH, VEHICLE_FACTORS,
