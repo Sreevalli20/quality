@@ -40,11 +40,15 @@ class Recommendation:
     reason: str
     group: str = "today"   # today | avoid | alternatives | indoor | why | next_steps
     priority: int = 2      # 1 high, 2 medium, 3 low
+    when: str = ""         # when to act, when meaningful
+    cost: str = ""         # approximate cost, only where defensible
+    alternative: str = ""  # practical alternative, where applicable
 
     def as_dict(self):
         return {"title": self.title, "detail": self.detail,
                 "reason": self.reason, "group": self.group,
-                "priority": self.priority}
+                "priority": self.priority, "when": self.when,
+                "cost": self.cost, "alternative": self.alternative}
 
 
 _CATEGORY_ORDER = ["Good", "Satisfactory", "Moderate", "Poor",
@@ -114,7 +118,10 @@ def generate_recommendations(m: MeasurementSet,
                     "the healthier choice today."),
             reason="Higher ventilation rates during exercise increase the dose "
                    "of pollutants inhaled per minute.",
-            group="today", priority=1))
+            group="today", priority=1,
+            when="Today, until air quality improves",
+            alternative="A 20-30 minute home workout or online yoga session",
+            cost="Free at home; gym memberships vary (~Rs 500-2,000/month)"))
 
     if _idx_ge(cat_name, "Moderate"):
         recs["today"].append(Recommendation(
@@ -124,7 +131,10 @@ def generate_recommendations(m: MeasurementSet,
                     "instead."),
             reason="Outdoor PM2.5 readily penetrates indoors through open "
                    "windows and doors.",
-            group="today", priority=2))
+            group="today", priority=2,
+            when="During the dirtiest hours (typically early morning/evening near traffic)",
+            alternative="Exhaust fans and recirculated AC keep air moving without importing pollution",
+            cost="Free"))
     if _idx_ge(cat_name, "Poor"):
         recs["today"].append(Recommendation(
             title="Wear an N95/KN95 mask for unavoidable outdoor exposure",
@@ -133,7 +143,10 @@ def generate_recommendations(m: MeasurementSet,
                     "particles only; surgical masks are not rated for PM2.5."),
             reason="Fine particles (PM2.5) pass through loose-fitting masks; "
                    "N95/KN95 filter at least 95% of 0.3-micron particles.",
-            group="today", priority=1))
+            group="today", priority=1,
+            when="Whenever you must be outdoors for more than ~15 minutes",
+            cost="~Rs 150-400 per mask (approximate, varies by brand)",
+            alternative="N95/KN95 respirator; cloth masks only filter large particles"))
     if _idx_ge(cat_name, "Very Poor"):
         recs["today"].append(Recommendation(
             title="Vulnerable members should stay indoors",
@@ -142,7 +155,10 @@ def generate_recommendations(m: MeasurementSet,
                     "today, even for short trips."),
             reason="CPCB health advisories flag severe risk for sensitive "
                    "groups at Very Poor and above.",
-            group="today", priority=1))
+            group="today", priority=1,
+            when="All day today",
+            alternative="Indoor play areas, museums or screen-time alternatives",
+            cost="No cost - just plan indoor activities"))
 
     # ---- C. What to avoid -----------------------------------------------
     if _idx_ge(cat_name, "Moderate"):
@@ -199,7 +215,10 @@ def generate_recommendations(m: MeasurementSet,
                    "fuel cost for the same trip.",
             reason="Per-passenger emissions fall roughly in proportion to "
                    "occupancy.",
-            group="alternatives", priority=2))
+            group="alternatives", priority=2,
+            when="For your regular commute days",
+            alternative="Metro/suburban rail where available - lowest per-passenger emissions",
+            cost="Splits fuel and tolls between riders; often cheaper per person"))
     if profile.transport == "bus" or profile.priority == "environment":
         recs["alternatives"].append(Recommendation(
             title="Keep using shared transit - it is already the low-emission choice",
@@ -232,7 +251,10 @@ def generate_recommendations(m: MeasurementSet,
                     "matched to room volume)."),
             reason="HEPA media capture >99% of 0.3-micron particles; this is "
                    "the most effective single indoor intervention.",
-            group="indoor", priority=1))
+            group="indoor", priority=1,
+            when="Run continuously in the occupied room",
+            cost="~Rs 3,000-25,000 depending on room size (indicative range)",
+            alternative="A DIY box-fan + MERV-13 filter build costs under ~Rs 2,000"))
         recs["indoor"].append(Recommendation(
             title="Use kitchen exhaust fans while cooking",
             detail="Cooking - especially frying and biomass use - is a major "
@@ -247,13 +269,18 @@ def generate_recommendations(m: MeasurementSet,
                     "the most vulnerable family member."),
             reason="Sleep is the longest continuous exposure period; a clean "
                    "room caps overnight dose.",
-            group="indoor", priority=1))
+            group="indoor", priority=1,
+            when="Especially for children, elderly and anyone with asthma/COPD",
+            alternative="Even without a purifier, a sealed room with damp dusting helps",
+            cost="Free to low-cost"))
         recs["indoor"].append(Recommendation(
             title="Wet-mop and damp-dust instead of dry sweeping",
             detail="Dry sweeping resuspends settled particles; damp methods "
                    "capture them.",
             reason="Resuspended dust adds to the particle load you breathe.",
-            group="indoor", priority=3))
+            group="indoor", priority=3,
+            when="Weekly, or more often during dusty periods",
+            cost="Free - water and a cloth"))
     else:
         recs["indoor"].append(Recommendation(
             title="Ventilate smartly",

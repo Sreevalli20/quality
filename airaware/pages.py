@@ -7,16 +7,15 @@ from datetime import datetime, timezone
 import pandas as pd
 import streamlit as st
 
-from . import charts, ui
-from .aqi import POLLUTANTS
-from .alerts import SEVERITY_META, evaluate_alerts
-from .data import (INDIAN_CITIES, MeasurementSet,
+from . import ai, charts, report, ui
+from .aqi import POLLUTANTS, is_outdoor_safe
+from .alerts import evaluate_alerts
+from .data import (INDIAN_CITIES, SAMPLE_MEASUREMENTS, MeasurementSet,
                    parse_measurements_csv)
 from .indoor import BUDGET_TIERS, ROOMS, ventilation_advice
-from .impact import (INDIAN_GRID_KG_CO2_PER_KWH, VEHICLE_FACTORS,
-                     actions_to_csv, estimate_ac_savings,
+from .impact import (VEHICLE_FACTORS, actions_to_csv, estimate_ac_savings,
                      estimate_trip_savings, summarise_actions, ImpactAction)
-from .lifestyle import options_by_area, personalised_options
+from .lifestyle import all_options, options_by_area, personalised_options
 from .planner import build_daily_plan
 from .recommendations import UserProfile, generate_recommendations
 
@@ -29,6 +28,31 @@ GROUP_LABELS = {
     "next_steps": "F/G. Why it matters & next steps",
 }
 
+POLLUTANT_HELP = {
+    "pm25": "Fine particles - reach deep into lungs",
+    "pm10": "Coarse dust - irritates airways",
+    "no2": "Traffic gas - smog component",
+    "so2": "Sulphur dioxide - respiratory irritant",
+    "co": "Carbon monoxide - reduces oxygen carriage",
+    "o3": "Ground-level ozone - peaks in afternoon sun",
+    "nh3": "Ammonia - agricultural/industrial",
+}
+
+POLLUTANT_PLACEHOLDER = {
+    "pm25": "e.g. 45", "pm10": "e.g. 120", "no2": "e.g. 60",
+    "so2": "e.g. 15", "co": "e.g. 1.2", "o3": "e.g. 90",
+    "nh3": "e.g. 300",
+}
+
+GROUP_WHEN = {
+    "understanding": "Now",
+    "today": "Today",
+    "avoid": "Whenever conditions apply",
+    "alternatives": "For your next trips",
+    "indoor": "At home, daily",
+    "next_steps": "This week",
+}
+
 
 def _meas() -> MeasurementSet | None:
     return st.session_state.get("measurement")
@@ -36,229 +60,26 @@ def _meas() -> MeasurementSet | None:
 
 def _require_measurement() -> bool:
     if _meas() is None:
-        ui.empty_state("No air-quality data loaded yet. Use the **Data source** "
-                       "panel in the sidebar to enter measurements, upload a "
-                       "CSV, or load the labelled sample set.")
+        ui.empty_state("No air-quality reading yet. Head to **Home** and "
+                       "start an air-quality check - it takes under a minute.")
         return False
     return True
 
 
 def _measurement_caption(m: MeasurementSet) -> str:
-    return (f"Location: {m.location or 'unspecified'} · "
-            f"Timestamp: {m.timestamp.strftime('%Y-%m-%d %H:%M UTC')} · "
-            f"Source: {m.source_label}")
+    return (f"{m.location or 'unspecified location'} · "
+            f"{m.timestamp.strftime('%Y-%m-%d %H:%M UTC')} · "
+            f"{m.source_label}")
 
 
 def _provenance_warning(m: MeasurementSet):
     if m.is_sample:
-        st.warning("**Sample demonstration data** - these values are "
-                   "illustrative, not live readings.")
+        st.warning("**Sample demonstration data** - illustrative values for "
+                   "exploration only, not a live reading.")
     elif m.source == "user":
-        st.caption("Source: user-provided measurement.")
+        st.caption("Source: measurement you entered.")
     elif m.source == "import":
-        st.caption(f"Source: imported from {m.notes}.")
-
-
-# ===========================================================================
-# HOME
-# ===========================================================================
-
-def home_page():
-    ui.hero(
-        "AirAware AI",
-        "Your intelligent urban air-quality companion - turning pollution data into everyday decisions.",
-        "CPCB AQI methodology · rule-based recommendations · works fully offline",
-    )
-
-    m = _meas()
-    col1, col2 = st.columns([1, 1])
-    with col1:
-        ui.section_header("How it works")
-        st.markdown(
-            "1. **Load air-quality data** - enter PM2.5/PM10/AQI manually, "
-            "import a CSV, or try the labelled sample set.\n\n"
-            "2. **Get a CPCB AQI assessment** - pollutant sub-indices are "
-            "calculated with official breakpoints; overall AQI is the maximum.\n\n"
-            "3. **Receive practical guidance** - what to do today, what to "
-            "avoid, indoor protection, greener travel choices and tracked impact."
-        )
-    with col2:
-        ui.section_header("Current reading")
-        if m and m.display_aqi is not None:
-            ui.kpi_row([
-                (f"{m.display_aqi:.0f}", "AQI"),
-                (m.category_name or "-", "Category"),
-                (m.location or "-", "Location"),
-                (m.source_label.split(" (")[0], "Source"),
-            ])
-            _provenance_warning(m)
-        else:
-            ui.empty_state("No measurement loaded. Use the sidebar to add one.")
-
-    ui.hr()
-    ui.section_header("Alerts")
-    for a in evaluate_alerts(m):
-        meta = SEVERITY_META[a.severity]
-        st.markdown(
-            f'<div class="aw-card" style="border-left:4px solid {meta["color"]}">'
-            f'<h4>{meta["label"]}: {a.title}</h4><p>{a.detail}</p></div>',
-            unsafe_allow_html=True)
-
-    ui.hr()
-    ui.section_header("Quick access")
-    cols = st.columns(3)
-    pages = [
-        ("Air Quality Explorer", "Sub-indices, charts, CSV import"),
-        ("Personal AI Assistant", "Context-aware recommendations"),
-        ("My Daily Air Plan", "Hour-by-hour guidance"),
-        ("Indoor Air Guardian", "Room-by-room, budget tiers"),
-        ("Green Lifestyle Planner", "Low-emission alternatives"),
-        ("Environmental Impact", "Track CO2e savings"),
-        ("Family & Community", "Checklists & education"),
-        ("About & Data Sources", "Methodology & limitations"),
-    ]
-    for i, (name, desc) in enumerate(pages):
-        with cols[i % 3]:
-            ui.card(name, body_text=desc)
-
-    ui.hr()
-    ui.section_header("Environmental awareness")
-    st.markdown(
-        "- **PM2.5** (particles ≤2.5 µm) penetrates deep into lungs and "
-        "bloodstream; it is the pollutant most linked to cardiorespiratory harm.\n"
-        "- **AQI is a maximum, not an average** - one bad pollutant sets the "
-        "whole index under the CPCB method.\n"
-        "- **Your smallest trip still counts** - short cold-start trips emit "
-        "more per km than highway cruising.\n"
-        "- **Indoor air is controllable** - filtration, ventilation timing and "
-        "cooking habits often matter more than outdoor levels overnight."
-    )
-
-
-# ===========================================================================
-# AIR QUALITY EXPLORER
-# ===========================================================================
-
-def explorer_page():
-    ui.hero("Air Quality Explorer",
-            "Assess air quality using CPCB AQI methodology.")
-
-    # --- manual quick-entry override within the page ---
-    with st.expander("Enter measurements for this analysis only"):
-        st.caption("These inputs are used for the explorer below and stored "
-                   "as your active measurement if applied.")
-        loc = st.text_input("Location", value=INDIAN_CITIES[0], key="exp_loc")
-        pcols = st.columns(4)
-        vals = {}
-        pkeys = ["pm25", "pm10", "no2", "so2", "co", "o3", "nh3"]
-        for i, p in enumerate(pkeys):
-            with pcols[i % 4]:
-                vals[p] = st.number_input(
-                    f"{POLLUTANTS[p]['name']} ({POLLUTANTS[p]['unit']})",
-                    min_value=0.0, value=0.0, step=1.0,
-                    key=f"exp_{p}") or None
-        aqi_direct = st.number_input("AQI (only if pollutant data unavailable)",
-                                     min_value=0.0, value=0.0, step=1.0,
-                                     key="exp_aqi") or None
-        if st.button("Use these values", key="exp_apply"):
-            pollutants = {k: v for k, v in vals.items() if v}
-            ms = MeasurementSet(location=loc, pollutants=pollutants,
-                                aqi=aqi_direct if not pollutants else None,
-                                source="user")
-            ms.finalize()
-            st.session_state["measurement"] = ms
-            st.success("Measurement applied - charts updated below.")
-
-    # --- CSV import for comparison set ---
-    with st.expander("Import measurements from CSV for comparison"):
-        up = st.file_uploader("CSV with pollutant columns (pm25, pm10, no2, so2, "
-                              "co, o3, nh3) and optional 'aqi', 'location', "
-                              "'timestamp' columns", type=["csv"], key="exp_csv")
-        if up is not None:
-            if st.button("Parse CSV", key="exp_parse"):
-                try:
-                    ms_list, warns = parse_measurements_csv(up.getvalue(), up.name)
-                    st.session_state["csv_measurements"] = ms_list
-                    for w in warns:
-                        st.warning(w)
-                    st.success(f"Parsed {len(ms_list)} measurement(s).")
-                except ValueError as e:
-                    st.error(str(e))
-        csv_list = st.session_state.get("csv_measurements")
-        if csv_list:
-            st.dataframe(pd.DataFrame([{
-                "location": m.location,
-                "AQI": m.display_aqi,
-                "category": m.category_name,
-                "source": m.source_label,
-                "timestamp": m.timestamp.strftime("%Y-%m-%d %H:%M"),
-            } for m in csv_list]), width="stretch")
-            if len(csv_list) > 1:
-                st.plotly_chart(charts.comparison_bar(csv_list),
-                                width="stretch")
-
-    # --- main assessment ---
-    m = _meas()
-    if m is None:
-        ui.empty_state("Load a measurement from the sidebar or use the entry "
-                       "form above.")
-        return
-
-    _provenance_warning(m)
-    st.caption(_measurement_caption(m))
-
-    aqi = m.display_aqi
-    if aqi is None:
-        st.error("No computable AQI from the current measurement.")
-        return
-
-    ui.kpi_row([
-        (f"{aqi:.0f}", "Overall AQI"),
-        (m.category_name or "-", "CPCB category"),
-        (f"{m.result.dominant_pollutant.upper()}" if m.result and m.result.dominant_pollutant else "-", "Dominant pollutant"),
-        (f"{len(m.result.pollutant_results)}/{len(POLLUTANTS)}", "Pollutants measured"),
-    ])
-
-    cat = m.result.category if m.result else None
-    if cat:
-        st.markdown(
-            f'<div class="aw-card" style="border-left:4px solid {cat["color"]}">'
-            f'<h4>{cat["name"]}</h4><p>{cat["summary"]}</p></div>',
-            unsafe_allow_html=True)
-
-    if m.result and m.result.pollutant_results:
-        st.plotly_chart(charts.pollutant_bar_chart(m.result),
-                        width="stretch")
-        st.plotly_chart(charts.aqi_gauge(aqi, m.category_name or ""),
-                        width="stretch")
-
-        st.markdown("**What each pollutant means**")
-        rows = []
-        for r in m.result.pollutant_results:
-            info = POLLUTANTS[r.pollutant]
-            rows.append({
-                "Pollutant": info["name"],
-                "Concentration": f"{r.concentration:g} {r.unit}",
-                "Averaging": info["period"],
-                "Sub-index": f"{r.sub_index:.0f}",
-                "Health relevance": _pollutant_note(r.pollutant),
-            })
-        st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
-
-    for n in (m.result.notes if m.result else []):
-        st.info(n)
-
-    st.markdown("---")
-    st.markdown("**AQI vs pollutant concentrations**")
-    st.markdown(
-        "AQI is a *unitless index* derived from pollutant concentrations via "
-        "CPCB breakpoints - higher is worse. Individual pollutants are "
-        "reported in their own units (µg/m³ or mg/m³). The overall AQI is "
-        "the **maximum** sub-index, so a single bad pollutant can dominate "
-        "the reading even when others are low. When only some pollutants "
-        "are measured, the result is a *partial* assessment - the true AQI "
-        "could be higher."
-    )
+        st.caption(f"Source: {m.notes}.")
 
 
 def _pollutant_note(p: str) -> str:
@@ -269,8 +90,387 @@ def _pollutant_note(p: str) -> str:
         "so2": "Sulphur dioxide; respiratory irritant, acid deposition.",
         "co": "Carbon monoxide; reduces blood oxygen carriage.",
         "o3": "Ground-level ozone; lung irritant, peaks in afternoon sun.",
-        "nh3": "Ammonia; agricultural/industrial source, precursor to particles.",
+        "nh3": "Ammonia; agricultural/industrial source, particle precursor.",
     }.get(p, "")
+
+
+def _set_measurement(m: MeasurementSet, success_msg: str):
+    m.finalize()
+    st.session_state["measurement"] = m
+    st.success(success_msg)
+
+
+# ===========================================================================
+# HOME
+# ===========================================================================
+
+def home_page():
+    ui.hero(
+        "Breathe smarter. Live better.",
+        "AirAware AI turns air-quality numbers into simple, personal "
+        "decisions - what to do today, how to protect your home, and how "
+        "to move cleaner, together.",
+        '<span class="aw-tag">PromptWars Challenge 06 · CPCB AQI methodology · '
+        'works offline, no sign-up</span>',
+        art=True)
+
+    m = _meas()
+
+    # ---------- current reading strip ----------
+    if m and m.display_aqi is not None:
+        ui.section_title("Your current reading")
+        cat = m.category_name or ""
+        ui.kpi_row([
+            (f"{m.display_aqi:.0f}", "AQI"),
+            (cat, "Category"),
+            (m.location or "-", "Location"),
+            (m.source.split(" ")[0].title(), "Source"),
+        ])
+        _provenance_warning(m)
+        for a in evaluate_alerts(m):
+            ui.alert_box(a.severity, a.title, a.detail)
+        c1, c2 = st.columns(2)
+        c1.button("See full assessment", key="home_to_explorer",
+                  on_click=lambda: st.session_state.update(nav_page="Air Quality Explorer"))
+        c2.button("Get personalised advice", key="home_to_assistant",
+                  on_click=lambda: st.session_state.update(nav_page="Personal AI Assistant"))
+        ui.hr()
+
+    # ---------- start your check ----------
+    ui.section_title("Start your air-quality check")
+    entry = st.session_state.get("home_entry")
+
+    if entry is None:
+        cols = st.columns(3)
+        choices = [
+            ("Enter my own measurements",
+             "Type PM2.5, PM10 or AQI values you already have",
+             "manual"),
+            ("Upload my air-quality report",
+             "Import a CSV exported from CPCB, a monitor or OpenAQ",
+             "csv"),
+            ("Explore demonstration data",
+             "Try realistic sample readings - always labelled as samples",
+             "sample"),
+        ]
+        for col, (label, desc, val) in zip(cols, choices):
+            with col:
+                ui.card(label, body_html=f"<p>{desc}</p>", variant="cta")
+                if st.button(f"Choose: {label}", key=f"entry_{val}",
+                             width="stretch"):
+                    st.session_state["home_entry"] = val
+                    st.rerun()
+    else:
+        _entry_panel(entry)
+        if st.button("← Back to all options", key="entry_back"):
+            st.session_state.pop("home_entry", None)
+            st.rerun()
+
+    ui.hr()
+
+    # ---------- what airaware can do ----------
+    ui.section_title("What AirAware can do")
+    feats = [
+        ("Know your air", "CPCB-method AQI from real pollutant measurements, "
+         "with honest labels for partial or sample data."),
+        ("Get a daily plan", "Hour-by-hour guidance that adapts to today's "
+         "reading - exercise indoors, travel smarter, sleep safer."),
+        ("Protect your home", "Room-by-room indoor air tips for every budget, "
+         "from free habits to HEPA filtration."),
+        ("Move cleaner", "Compare transit, carpool, cycling and walking with "
+         "clear benefits and honest limitations."),
+        ("See your impact", "Estimate CO₂e saved by your greener choices and "
+         "download a personal report."),
+        ("Bring everyone along", "Family checklists and simple explanations "
+         "kids can understand."),
+    ]
+    for i in range(0, len(feats), 3):
+        cols = st.columns(3)
+        for j, (title, desc) in enumerate(feats[i:i + 3]):
+            with cols[j]:
+                ui.card(title, body_html=f"<p>{desc}</p>", variant="feature")
+
+    ui.hr()
+
+    # ---------- module teasers ----------
+    ui.section_title("Your personal daily guidance")
+    t1, t2 = st.columns(2)
+    with t1:
+        ui.card("Personal AI Assistant",
+                body_html="<p>Tell AirAware about your routine - work hours, "
+                          "transport, family - and get prioritised advice "
+                          "with reasons, costs and alternatives.</p>")
+        ui.cta_button("Open the assistant", "Personal AI Assistant",
+                      key="cta_assistant")
+    with t2:
+        ui.card("My Daily Air Plan",
+                body_html="<p>Wake-up to bedtime guidance shaped by today's "
+                          "AQI. Edit it, download it, share it with family.</p>")
+        ui.cta_button("Plan my day", "My Daily Air Plan", key="cta_plan")
+
+    ui.section_title("Protect your indoor spaces")
+    t1, t2 = st.columns(2)
+    with t1:
+        ui.card("Indoor Air Guardian",
+                body_html="<p>Bedroom, kitchen, study and kids' room - what "
+                          "to change first, at free, low-cost and premium "
+                          "budgets.</p>")
+        ui.cta_button("Check my rooms", "Indoor Air Guardian", key="cta_indoor")
+    with t2:
+        ui.card("Green Lifestyle Planner",
+                body_html="<p>Practical low-emission swaps for transport, "
+                          "energy, waste and home - ranked for your situation.</p>")
+        ui.cta_button("Explore options", "Green Lifestyle Planner",
+                      key="cta_lifestyle")
+
+    ui.section_title("Greener decisions, visible impact")
+    t1, t2 = st.columns(2)
+    with t1:
+        ui.card("Environmental Impact",
+                body_html="<p>Log avoided car trips, transit switches and AC "
+                          "savings. See estimated CO₂e benefits grow.</p>")
+        ui.cta_button("Track my impact", "Environmental Impact",
+                      key="cta_impact")
+    with t2:
+        ui.card("Family & Community",
+                body_html="<p>Household checklists, kids' explainers and "
+                          "neighbourhood action ideas.</p>")
+        ui.cta_button("Get family tips", "Family & Community",
+                      key="cta_family")
+
+    ui.hr()
+    ui.section_title("Good to know")
+    st.markdown(
+        "- **AQI is a maximum, not an average** - one bad pollutant sets the "
+        "whole index under the CPCB method.\n"
+        "- **PM2.5 is the quiet risk** - particles small enough to enter the "
+        "bloodstream; filtration and masks matter most here.\n"
+        "- **Short trips pollute most per km** - cold engines and stop-go "
+        "traffic multiply emissions; combine errands when you can.\n"
+        "- **Windows are a two-way door** - open them on clean days, keep "
+        "them shut (and filter) on polluted ones."
+    )
+
+
+# ---------------------------------------------------------------------------
+# Home: data entry panels
+# ---------------------------------------------------------------------------
+
+def _entry_panel(entry: str):
+    if entry == "manual":
+        _manual_entry_form(prefix="home")
+    elif entry == "csv":
+        _csv_entry_panel()
+    elif entry == "sample":
+        _sample_entry_panel()
+
+
+def _manual_entry_form(prefix: str = "", apply_immediately: bool = True):
+    """Guided pollutant entry. Empty fields stay empty (no fake zeros)."""
+    ui.field_label("Where are you?", "Pick a city or describe your locality.")
+    loc = st.selectbox("Location", INDIAN_CITIES, key=f"{prefix}loc_entry")
+
+    st.markdown("**What do you know about today's air?**")
+    st.caption("Leave fields empty if unknown - AirAware works with partial "
+               "data and tells you what is missing.")
+    pollutants = {}
+    cols = st.columns(4)
+    pkeys = list(POLLUTANTS.keys())
+    for i, p in enumerate(pkeys):
+        with cols[i % 4]:
+            info = POLLUTANTS[p]
+            val = st.number_input(
+                f"{info['name']} ({info['unit']})",
+                min_value=0.0, value=None, step=1.0,
+                placeholder=POLLUTANT_PLACEHOLDER[p],
+                help=POLLUTANT_HELP[p], key=f"{prefix}p_{p}")
+            if val is not None:
+                pollutants[p] = float(val)
+
+    aqi_val = st.number_input(
+        "Overall AQI (optional - only used if no pollutant values entered)",
+        min_value=0.0, value=None, step=1.0, placeholder="e.g. 185",
+        key=f"{prefix}aqi_entry")
+
+    if st.button("Assess my air quality", key=f"{prefix}apply",
+                 type="primary"):
+        if not pollutants and aqi_val is None:
+            st.error("Please enter at least one pollutant value or an AQI.")
+            return
+        ms = MeasurementSet(
+            location=loc, pollutants=pollutants,
+            aqi=float(aqi_val) if (aqi_val is not None and not pollutants)
+            else None,
+            source="user")
+        ms.finalize()
+        st.session_state["measurement"] = ms
+        if apply_immediately:
+            st.session_state["nav_page"] = "Air Quality Explorer"
+            st.rerun()
+        st.success("Measurement saved - see your assessment.")
+
+
+def _csv_entry_panel():
+    st.markdown("**Upload an air-quality CSV**")
+    st.caption("Expected columns: pollutant names (pm25, pm10, no2, so2, "
+               "co, o3, nh3) and optional `aqi`, `location`, `timestamp`. "
+               "Max 2 MB / 5,000 rows. Files are parsed locally only.")
+    up = st.file_uploader("Choose a CSV file", type=["csv"], key="home_csv_up")
+    if up is not None and st.button("Import file", key="home_csv_go",
+                                    type="primary"):
+        try:
+            ms_list, warns = parse_measurements_csv(up.getvalue(), up.name)
+            st.session_state["csv_measurements"] = ms_list
+            for w in warns:
+                st.warning(w)
+            st.success(f"Imported {len(ms_list)} observation(s) - "
+                       "select one below.")
+        except ValueError as e:
+            st.error(str(e))
+    csv_list = st.session_state.get("csv_measurements")
+    if csv_list:
+        labels = [f"{m.location} · AQI {m.display_aqi:.0f} · "
+                  f"{m.timestamp.strftime('%Y-%m-%d %H:%M')}"
+                  if m.display_aqi is not None else m.location
+                  for m in csv_list]
+        pick = st.selectbox("Observation", range(len(csv_list)),
+                            format_func=lambda i: labels[i],
+                            key="home_csv_pick")
+        if st.button("Use this observation", key="home_csv_use"):
+            st.session_state["measurement"] = csv_list[pick]
+            st.session_state["nav_page"] = "Air Quality Explorer"
+            st.rerun()
+
+
+def _sample_entry_panel():
+    st.markdown("**Explore demonstration data**")
+    st.warning("These are **illustrative sample readings** created for "
+               "demonstration - they are NOT live pollution data.")
+    picks = [f"{m.location} · AQI {m.display_aqi:.0f}"
+             for m in SAMPLE_MEASUREMENTS]
+    pick = st.selectbox("Sample city", range(len(SAMPLE_MEASUREMENTS)),
+                        format_func=lambda i: picks[i], key="home_sample_pick")
+    st.caption(SAMPLE_MEASUREMENTS[pick].notes)
+    if st.button("Load this sample", key="home_sample_use", type="primary"):
+        st.session_state["measurement"] = SAMPLE_MEASUREMENTS[pick]
+        st.session_state["nav_page"] = "Air Quality Explorer"
+        st.rerun()
+
+
+# ===========================================================================
+# AIR QUALITY EXPLORER
+# ===========================================================================
+
+def explorer_page():
+    ui.hero("Air Quality Explorer",
+            "A guided assessment built on the official CPCB AQI methodology. "
+            "Enter what you know - partial data is handled honestly.")
+
+    m = _meas()
+
+    # ---------- guided entry ----------
+    with st.expander("Enter or update measurements", expanded=m is None):
+        _manual_entry_form(prefix="exp")
+
+    # ---------- assessment ----------
+    if m is None:
+        ui.empty_state("Enter measurements above (or start a check on Home) "
+                       "to see your assessment.")
+        return
+
+    _provenance_warning(m)
+    st.caption(_measurement_caption(m))
+
+    aqi = m.display_aqi
+    if aqi is None:
+        st.error("No computable AQI from the current measurement.")
+        return
+
+    completeness = (len(m.result.pollutant_results) / len(POLLUTANTS)
+                    if m.result else 0)
+    cat = m.result.category if m.result else None
+
+    col_a, col_b = st.columns([1, 2])
+    with col_a:
+        st.plotly_chart(charts.aqi_gauge(aqi, m.category_name or ""),
+                        width="stretch")
+    with col_b:
+        ui.kpi_row([
+            (f"{aqi:.0f}", "Overall AQI"),
+            (m.category_name or "-", "CPCB category"),
+            (m.result.dominant_pollutant.upper()
+             if m.result and m.result.dominant_pollutant else "-",
+             "Dominant pollutant"),
+            (f"{completeness*100:.0f}%", "Data completeness"),
+        ])
+        if cat:
+            ui.card(cat["name"],
+                    body_html=f'<p>{cat["summary"]}</p>')
+
+    if completeness < 1:
+        st.info(f"**Partial data:** {len(m.result.pollutant_results)} of "
+                f"{len(POLLUTANTS)} pollutants measured. The AQI shown is "
+                "the maximum of what was measured - the true AQI could be "
+                "higher.")
+
+    if m.result and m.result.pollutant_results:
+        st.plotly_chart(charts.pollutant_bar_chart(m.result), width="stretch")
+        st.markdown("**Your measurements**")
+        rows = []
+        for r in m.result.pollutant_results:
+            info = POLLUTANTS[r.pollutant]
+            rows.append({
+                "Pollutant": info["name"],
+                "Your value": f"{r.concentration:g} {r.unit}",
+                "Averaging": info["period"],
+                "Sub-index": f"{r.sub_index:.0f}",
+                "What it means": _pollutant_note(r.pollutant),
+            })
+        st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
+
+    # health guidance by category
+    safe, safe_msg = is_outdoor_safe(m.category_name or "Good", "moderate")
+    guidance = ("Good conditions for normal outdoor activity."
+                if safe else safe_msg)
+    ui.card("Health guidance",
+            body_html=f"<p>{guidance}</p>"
+                     f"<p>Category summary: "
+                     f"{cat['summary'] if cat else ''}</p>")
+
+    for n in (m.result.notes if m.result else []):
+        st.info(n)
+
+    # ---------- CSV comparison ----------
+    with st.expander("Import a CSV to compare multiple observations"):
+        up = st.file_uploader("CSV with pollutant columns", type=["csv"],
+                              key="exp_csv")
+        if up is not None and st.button("Parse CSV", key="exp_parse"):
+            try:
+                ms_list, warns = parse_measurements_csv(up.getvalue(), up.name)
+                st.session_state["csv_measurements"] = ms_list
+                for w in warns:
+                    st.warning(w)
+                st.success(f"Parsed {len(ms_list)} measurement(s).")
+            except ValueError as e:
+                st.error(str(e))
+        csv_list = st.session_state.get("csv_measurements")
+        if csv_list:
+            st.dataframe(pd.DataFrame([{
+                "location": mm.location,
+                "AQI": mm.display_aqi,
+                "category": mm.category_name,
+                "timestamp": mm.timestamp.strftime("%Y-%m-%d %H:%M"),
+            } for mm in csv_list]), width="stretch", hide_index=True)
+            if len(csv_list) > 1:
+                st.plotly_chart(charts.comparison_bar(csv_list),
+                                width="stretch")
+
+    ui.hr()
+    st.markdown(
+        "**AQI vs pollutant concentrations** — AQI is a unitless index from "
+        "CPCB breakpoints; pollutants keep their own units. Overall AQI is "
+        "the **maximum** sub-index, so one bad pollutant can dominate."
+    )
 
 
 # ===========================================================================
@@ -278,100 +478,171 @@ def _pollutant_note(p: str) -> str:
 # ===========================================================================
 
 def assistant_page():
-    ui.hero("Personal AI Assistant",
-            "Context-aware guidance powered by a transparent rule engine - "
-            "no external AI service is used or claimed.")
+    ui.hero("Your Personal Air Companion",
+            "Tell us about your routine and get clear, prioritised advice "
+            "- with reasons, timing, costs and alternatives.",
+            "Powered by a transparent rule engine"
+            + (" + optional Gemini enhancement" if ai.gemini_configured()
+               else " · no external AI required"))
 
     with st.form("profile_form"):
-        st.markdown("**About you**")
+        st.markdown("**A little about you**")
         c1, c2 = st.columns(2)
-        city = c1.text_input("City / locality", value="")
-        lifestyle = c1.selectbox("Lifestyle", [
-            "Office worker", "Student", "Runner / fitness enthusiast",
-            "Parent", "Shift worker", "Retired / home mostly"],
+        city = c1.text_input("City or locality (optional)",
+                             placeholder="e.g. Pune, Kothrud",
+                             key="as_city")
+        lifestyle = c1.selectbox("Your day mostly looks like", [
+            "Office job", "Student", "Runner / gym-goer",
+            "Parent at home", "Shift worker", "Mostly at home"],
             key="as_life")
-        transport = c2.selectbox("Main transport", [
+        transport = c2.selectbox("How you usually get around", [
             "Car", "Bike / scooter", "Bus", "Metro / train",
-            "Cycle", "Walk", "Mixed"], key="as_trans")
-        household = c2.selectbox("Household", [
-            "Living alone", "With family", "With children",
-            "With elderly members"], key="as_hh")
-        outdoor = st.selectbox("Typical outdoor activity level", [
-            "Light (short walks)", "Moderate (jogging, cycling)",
-            "Heavy (intense exercise, sports)"], key="as_out")
-        concerns = st.multiselect("Daily concerns", [
-            "Health conditions (asthma/COPD/heart)", "Long commute",
-            "Children's health", "Budget / cost", "Staying active outdoors",
-            "Reducing environmental impact"], key="as_conc")
-        budget = st.selectbox("Budget for improvements", [
-            "Free only", "Low (under ~Rs 5,000)", "Moderate (Rs 5-25k)",
-            "Higher investments OK"], key="as_budget")
-        priority = st.selectbox("Top priority", [
+            "Bicycle", "On foot", "Depends on the day"], key="as_trans")
+        household = c2.selectbox("Who you live with", [
+            "Just me", "Family", "Children", "Elderly family members"],
+            key="as_hh")
+        st.markdown("**Your habits & priorities**")
+        c3, c4 = st.columns(2)
+        outdoor = c3.selectbox("Outdoor activity level", [
+            "Light - short walks", "Moderate - jogging, cycling",
+            "Heavy - sports, long runs"], key="as_out")
+        budget = c4.selectbox("Budget for improvements", [
+            "Free only", "Low - under ~₹5,000", "Moderate - ₹5,000-25,000",
+            "Open to bigger investments"], key="as_budget")
+        concerns = st.multiselect("What matters most to you", [
+            "Health (asthma, heart, breathing)", "Long commute",
+            "Children's wellbeing", "Saving money", "Staying active outdoors",
+            "Reducing pollution I cause"], key="as_conc")
+        priority = st.selectbox("Your top priority", [
             "Health protection", "Saving money", "Convenience",
             "Environmental impact"], key="as_pri")
-        submitted = st.form_submit_button("Generate my plan")
+        submitted = st.form_submit_button("Create my personalised plan",
+                                          type="primary")
 
-    life_map = {"Office worker": "office", "Student": "student",
-                "Runner / fitness enthusiast": "runner", "Parent": "parent",
-                "Shift worker": "shift_worker", "Retired / home mostly": "retired"}
+    life_map = {"Office job": "office", "Student": "student",
+                "Runner / gym-goer": "runner", "Parent at home": "parent",
+                "Shift worker": "shift_worker", "Mostly at home": "retired"}
     trans_map = {"Car": "car", "Bike / scooter": "bike", "Bus": "bus",
-                 "Metro / train": "metro", "Cycle": "cycle", "Walk": "walk",
-                 "Mixed": "mixed"}
-    hh_map = {"Living alone": "alone", "With family": "family",
-              "With children": "children", "With elderly members": "elderly"}
-    out_map = {"Light (short walks)": "light",
-               "Moderate (jogging, cycling)": "moderate",
-               "Heavy (intense exercise, sports)": "heavy"}
-    bud_map = {"Free only": "free", "Low (under ~Rs 5,000)": "low",
-               "Moderate (Rs 5-25k)": "moderate",
-               "Higher investments OK": "high"}
+                 "Metro / train": "metro", "Bicycle": "cycle",
+                 "On foot": "walk", "Depends on the day": "mixed"}
+    hh_map = {"Just me": "alone", "Family": "family",
+              "Children": "children", "Elderly family members": "elderly"}
+    out_map = {"Light - short walks": "light",
+               "Moderate - jogging, cycling": "moderate",
+               "Heavy - sports, long runs": "heavy"}
+    bud_map = {"Free only": "free", "Low - under ~₹5,000": "low",
+               "Moderate - ₹5,000-25,000": "moderate",
+               "Open to bigger investments": "high"}
     pri_map = {"Health protection": "health", "Saving money": "cost",
-               "Convenience": "convenience", "Environmental impact": "environment"}
-    con_map = {"Health conditions (asthma/COPD/heart)": "health",
-               "Long commute": "commute", "Children's health": "kids",
-               "Budget / cost": "cost",
-               "Staying active outdoors": "exercise",
-               "Reducing environmental impact": "environment"}
+               "Convenience": "convenience",
+               "Environmental impact": "environment"}
+    con_map = {"Health (asthma, heart, breathing)": "health",
+               "Long commute": "commute", "Children's wellbeing": "kids",
+               "Saving money": "cost", "Staying active outdoors": "exercise",
+               "Reducing pollution I cause": "environment"}
 
-    if submitted or st.session_state.get("profile"):
-        if submitted:
-            st.session_state["profile"] = UserProfile(
-                city=city, lifestyle=life_map[lifestyle],
-                transport=trans_map[transport], household=hh_map[household],
-                outdoor_pref=out_map[outdoor],
-                concerns=[con_map[c] for c in concerns],
-                budget=bud_map[budget], priority=pri_map[priority])
-        profile: UserProfile = st.session_state["profile"]
+    if submitted:
+        st.session_state["profile"] = UserProfile(
+            city=city, lifestyle=life_map[lifestyle],
+            transport=trans_map[transport], household=hh_map[household],
+            outdoor_pref=out_map[outdoor],
+            concerns=[con_map[c] for c in concerns],
+            budget=bud_map[budget], priority=pri_map[priority])
+        st.session_state.pop("ai_text", None)
 
-        if not _require_measurement():
-            return
-        m = _meas()
-        recs = generate_recommendations(m, profile)
+    profile: UserProfile | None = st.session_state.get("profile")
+    if profile is None:
+        ui.empty_state("Fill in the short form above to get your plan. "
+                       "Your answers stay in this browser session only.")
+        return
 
-        ui.card("Your situation",
-                body_html=f"<p>{profile.summary()}</p>"
-                         f"<p>Outdoor activity: {outdoor} · Budget: {budget} · "
-                         f"Priority: {priority}</p>")
+    if not _require_measurement():
+        st.button("Start an air-quality check", key="as_go_home",
+                  on_click=lambda: st.session_state.update(nav_page="Home"))
+        return
+    m = _meas()
+    recs = generate_recommendations(m, profile)
 
-        for group, label in GROUP_LABELS.items():
-            items = recs.get(group, [])
-            if not items:
-                continue
-            st.markdown(f"**{label}**")
-            for r in sorted(items, key=lambda x: x.priority):
-                pri = {1: "High", 2: "Medium", 3: "Low"}[r.priority]
-                st.markdown(
-                    f'<div class="aw-card" style="border-left:4px solid '
-                    + ("#dc2626" if r.priority == 1 else
-                       "#d97706" if r.priority == 2 else "#2563eb") + '">'
-                    f'<h4>{r.title} <span class="aw-meta">· {pri} priority</span></h4>'
-                    f'<p>{r.detail}</p><div class="aw-reason">Why: {r.reason}</div>'
-                    f'</div>', unsafe_allow_html=True)
-            ui.hr()
+    ui.card("Your situation",
+            body_html=f"<p>{profile.summary()}</p>"
+                     f"<p>Outdoor activity: {outdoor} · Budget: {budget} · "
+                     f"Priority: {priority}</p>")
 
-        st.caption("Recommendations are generated by deterministic Python "
-                   "rules from your profile and the CPCB AQI category. No "
-                   "external AI model is used.")
+    for group, label in GROUP_LABELS.items():
+        items = recs.get(group, [])
+        if not items:
+            continue
+        st.markdown(f"**{label}**")
+        for r in sorted(items, key=lambda x: x.priority):
+            pri_color = {1: "#b91c1c", 2: "#b45309", 3: "#2563eb"}[r.priority]
+            pri_label = {1: "Priority", 2: "Suggested", 3: "Optional"}[
+                r.priority]
+            extras = ""
+            if r.when:
+                extras += f'<p><b>When:</b> {r.when}</p>'
+            if r.cost:
+                extras += f'<p><b>Cost:</b> {r.cost}</p>'
+            if r.alternative:
+                extras += f'<p><b>Alternative:</b> {r.alternative}</p>'
+            st.markdown(
+                f'<div class="aw-card" style="border-left:4px solid {pri_color}">'
+                f'<h4>{r.title} '
+                f'<span class="aw-meta">· {pri_label}</span></h4>'
+                f'<p><b>What:</b> {r.detail}</p>'
+                f'{extras}'
+                f'<div class="aw-reason"><b>Why it matters:</b> {r.reason}</div>'
+                f'</div>', unsafe_allow_html=True)
+        ui.hr()
+
+    # ---------- optional Gemini enhancement ----------
+    st.markdown("**A warmer explanation (optional)**")
+    if ai.gemini_configured():
+        st.caption("Gemini API key detected in secrets. The button below "
+                   "sends your profile summary and top recommendations to "
+                   "Google's Gemini API for a narrative briefing. Output is "
+                   "clearly labelled as AI-generated.")
+        if st.button("Generate AI briefing", key="ai_gen"):
+            top = [r.title + " - " + r.detail
+                   for items in recs.values() for r in items[:3]]
+            prompt = ai.build_assistant_prompt(
+                f"AQI {m.display_aqi:.0f} ({m.category_name}) at {m.location}; "
+                f"source: {m.source_label}",
+                profile.summary(), top)
+            with st.spinner("Asking Gemini..."):
+                text = ai.generate_text(prompt)
+            if text:
+                st.session_state["ai_text"] = text
+            else:
+                st.warning("Gemini did not respond (network, quota or "
+                           "configuration). Your rule-based plan above is "
+                           "unaffected.")
+        if st.session_state.get("ai_text"):
+            st.markdown(
+                '<div class="aw-card" style="border-left:4px solid #7c3aed">'
+                '<h4>AI-generated briefing · Gemini</h4>'
+                f'<p style="white-space:pre-wrap">{st.session_state["ai_text"]}</p>'
+                '<p class="aw-meta">Generated by Google Gemini from your '
+                'profile and the rule-based recommendations. Verify health '
+                'decisions with a professional.</p></div>',
+                unsafe_allow_html=True)
+    else:
+        st.caption("_Rule-based guidance only._ Add `GEMINI_API_KEY` to "
+                   "`.streamlit/secrets.toml` to optionally enable a "
+                   "Gemini-written narrative briefing. Everything above "
+                   "works without it.")
+
+    # ---------- personal report ----------
+    ui.hr()
+    st.markdown("**Take your plan with you**")
+    plan_state = st.session_state.get("daily_plan", {})
+    md = report.build_report(m, profile, recs,
+                             plan_guidance=plan_state or None)
+    st.download_button("Download my air plan (Markdown)",
+                       data=md, file_name="airaware_my_plan.md",
+                       mime="text/markdown",
+                       key="report_dl")
+    st.caption("The report contains your reading, profile and "
+               "recommendations - stored only in this file, nowhere else.")
 
 
 # ===========================================================================
@@ -380,9 +651,8 @@ def assistant_page():
 
 def planner_page():
     ui.hero("My Daily Air Plan",
-            "A personalised hour-by-hour plan based on the current reading. "
-            "Guidance reflects current conditions - it does not predict "
-            "future hourly pollution.")
+            "A personalised schedule shaped by today's reading. Guidance "
+            "reflects current conditions - it does not predict future hours.")
     m = _meas()
     if not _require_measurement():
         return
@@ -392,28 +662,38 @@ def planner_page():
 
     plan = build_daily_plan(m, outdoor_pref=outdoor,
                             has_children=bool(has_kids))
-    indoor_n, total_n = sum(1 for p in plan if p.indoor_friendly), len(plan)
+    indoor_n = sum(1 for p in plan if p.indoor_friendly)
     ui.kpi_row([
-        (f"{m.category_name}", "Current AQI category"),
-        (f"{indoor_n}/{total_n}", "Indoor-friendly slots"),
+        (m.category_name or "-", "Today's category"),
+        (f"{indoor_n}/{len(plan)}", "Indoor-friendly slots"),
         (m.location or "-", "Location"),
     ])
     st.caption(_measurement_caption(m))
 
-    # editable plan storage
     key = "daily_plan"
-    if key not in st.session_state:
+    # rebuild when there is no plan, an explicit regenerate was requested,
+    # or the underlying measurement changed
+    meas_changed = st.session_state.get("plan_meas_id") != id(m)
+    if (key not in st.session_state or st.session_state.get("plan_regen")
+            or meas_changed):
         st.session_state[key] = {p.slot_key: p.guidance for p in plan}
+        st.session_state["plan_regen"] = False
+        st.session_state["plan_meas_id"] = id(m)
 
-    if st.button("Reset plan to current recommendations"):
-        st.session_state[key] = {p.slot_key: p.guidance for p in plan}
-        st.rerun()
+    c1, c2 = st.columns([1, 4])
+    c1.button("Regenerate from current reading", key="plan_reset",
+              on_click=lambda: st.session_state.update(plan_regen=True))
 
+    slot_icons = {
+        "morning": "MORNING", "commute_am": "AM TRAVEL",
+        "midday": "MIDDAY", "commute_pm": "PM TRAVEL",
+        "evening": "EVENING", "night": "NIGHT",
+    }
     for p in plan:
         edited = st.text_area(
-            f"{p.slot_label} - {p.focus}",
+            f"{slot_icons.get(p.slot_key, p.slot_label)} — {p.focus}",
             value=st.session_state[key].get(p.slot_key, p.guidance),
-            key=f"plan_{p.slot_key}", height=68)
+            key=f"plan_{p.slot_key}", height=64)
         st.session_state[key][p.slot_key] = edited
 
     st.download_button(
@@ -422,7 +702,8 @@ def planner_page():
             "slot": p.slot_label, "focus": p.focus,
             "guidance": st.session_state[key].get(p.slot_key, p.guidance),
         } for p in plan]).to_csv(index=False),
-        file_name="airaware_daily_plan.csv", mime="text/csv")
+        file_name="airaware_daily_plan.csv", mime="text/csv",
+        key="plan_dl")
 
 
 # ===========================================================================
@@ -431,48 +712,53 @@ def planner_page():
 
 def indoor_page():
     ui.hero("Indoor Air Guardian",
-            "Practical, room-by-room guidance for healthier indoor air.")
+            "Your home is where you spend most of your time - make the air "
+            "inside it healthier, one room at a time.")
     m = _meas()
     cat = m.category_name if m else None
 
     head, detail = ventilation_advice(cat)
-    st.markdown(
-        f'<div class="aw-card" style="border-left:4px solid #0f5132">'
-        f'<h4>{head}</h4><p>{detail}</p></div>', unsafe_allow_html=True)
+    ui.card(head, body_html=f"<p>{detail}</p>")
     if m:
         st.caption(_measurement_caption(m))
 
-    st.markdown("**Choose a room**")
-    room_names = [r.name for r in ROOMS]
-    sel = st.selectbox("Room", room_names, key="indoor_room")
+    ui.section_title("Pick a room")
+    room_cols = st.columns(5)
+    for i, r in enumerate(ROOMS):
+        with room_cols[i]:
+            if st.button(r.name, key=f"room_{r.name}",
+                         width="stretch"):
+                st.session_state["indoor_room"] = r.name
+                st.rerun()
+    sel = st.session_state.get("indoor_room", ROOMS[0].name)
     room = next(r for r in ROOMS if r.name == sel)
     ui.card(room.name,
             body_html="<br>".join(f"• {x}" for x in room.priorities) +
             f'<p class="aw-meta" style="margin-top:.5rem">{room.notes}</p>')
 
-    ui.hr()
-    st.markdown("**Improvements by budget**")
-    st.caption("Indicative Indian-rupee ranges - prices vary widely by brand "
-               "and city; treat them as planning estimates, not quotes.")
-    tier = st.selectbox("Budget tier", list(BUDGET_TIERS.keys()),
-                        format_func=lambda k: BUDGET_TIERS[k]["label"],
-                        key="indoor_budget")
-    t = BUDGET_TIERS[tier]
-    ui.card(f"{t['label']} · {t['range']}",
-            body_html="<br>".join(f"• {x}" for x in t["items"]))
+    ui.section_title("Improvements by budget")
+    st.caption("Indicative Indian-rupee ranges - prices vary by brand and "
+               "city; planning estimates, not quotes.")
+    tab_labels = [f"{BUDGET_TIERS[k]['label']} · {BUDGET_TIERS[k]['range']}"
+                  for k in BUDGET_TIERS]
+    tabs = st.tabs(tab_labels)
+    for tab, key in zip(tabs, BUDGET_TIERS.keys()):
+        with tab:
+            t = BUDGET_TIERS[key]
+            for item in t["items"]:
+                st.markdown(f"- {item}")
 
-    ui.hr()
-    st.markdown("**Common indoor pollution sources to control**")
+    ui.section_title("Indoor pollution sources to control")
     st.markdown(
         "- **Cooking** - frying and biomass fuels are the biggest indoor PM2.5 sources.\n"
         "- **Tobacco smoke & incense** - no safe level indoors; eliminate.\n"
-        "- **Dust** - resuspends with activity; damp-clean and use doormaps.\n"
-        "- **Cleaning products & air fresheners** - many emit VOCs; choose fragrance-free.\n"
-        "- **Outdoor infiltration** - depends on AQI; seal windows on bad days.\n"
-        "- **Mould & damp** - worsens with poor ventilation; fix leaks promptly."
+        "- **Dust** - resuspends with activity; damp-clean and use doormats.\n"
+        "- **Cleaning products** - many emit VOCs; choose fragrance-free.\n"
+        "- **Outdoor infiltration** - depends on today's AQI; seal windows on bad days.\n"
+        "- **Mould & damp** - worsens without ventilation; fix leaks promptly."
     )
-    st.caption("Note: houseplants improve wellbeing but are not a substitute "
-               "for filtration - their effect on PM2.5 is negligible.")
+    st.caption("Honest note: houseplants improve wellbeing but are **not** "
+               "air purifiers - their effect on PM2.5 is negligible.")
 
 
 # ===========================================================================
@@ -481,19 +767,19 @@ def indoor_page():
 
 def lifestyle_page():
     ui.hero("Green Lifestyle Planner",
-            "Practical sustainable-living options, personalised to your "
-            "situation. Every option states its limits honestly.")
+            "Practical low-emission swaps for transport, energy, waste and "
+            "home - each with honest benefits and limitations.")
 
     profile = st.session_state.get("profile")
     if profile is None:
-        st.info("Fill in the **Personal AI Assistant** form first for "
-                "personalised ranking - or browse all options below.")
-        scored = [(0, o) for o in _all_opts()]
+        st.info("Complete the **Personal AI Assistant** form to rank these "
+                "options for your situation - or browse everything below.")
+        scored = [(0, o) for o in all_options()]
     else:
         scored = personalised_options(profile)
 
-    area_filter = st.selectbox("Filter by area",
-                               ["All"] + list(options_by_area().keys()))
+    area_filter = st.selectbox("Focus area", ["All"] + list(options_by_area().keys()),
+                               key="life_area")
 
     current_area = None
     for score, opt in scored:
@@ -502,7 +788,7 @@ def lifestyle_page():
         if opt.area != current_area:
             st.markdown(f"**{opt.area}**")
             current_area = opt.area
-        badge = f" · match score {score}" if profile and score > 0 else ""
+        badge = f" · match {score}" if profile and score > 0 else ""
         body = (f"<p>{opt.detail}</p>"
                 f"<p><b>Benefit:</b> {opt.benefit}</p>"
                 f"<p><b>Limitation:</b> {opt.limitation}</p>")
@@ -511,29 +797,23 @@ def lifestyle_page():
         ui.card(f"{opt.title}{badge}", body_html=body)
 
 
-def _all_opts():
-    from .lifestyle import all_options
-    return all_options()
-
-
 # ===========================================================================
 # ENVIRONMENTAL IMPACT
 # ===========================================================================
 
 def impact_page():
     ui.hero("Environmental Impact Tracker",
-            "Estimate the CO2e benefit of your sustainable choices. All "
-            "figures are transparent estimates, not measured reductions.")
+            "Estimate the climate benefit of your greener choices. All "
+            "figures are transparent estimates - not measured reductions.")
 
-    st.markdown(
-        '<div class="aw-card"><h4>Important distinction</h4>'
-        '<p>CO₂e savings from transport and energy are <b>climate</b> '
-        'benefits. They are not the same as PM2.5 or local air-pollution '
-        'reductions, though cleaner transport usually helps both.</p></div>',
-        unsafe_allow_html=True)
+    ui.card("CO₂e vs air pollution",
+            body_html="<p>CO₂e savings from transport and energy are "
+                      "<b>climate</b> benefits. They are not the same as PM2.5 "
+                      "or local air-pollution reductions - though cleaner "
+                      "transport usually helps both.</p>")
 
     # --- Trip calculator ---
-    st.markdown("**Trip-mode comparison**")
+    st.markdown("### Compare a trip")
     c1, c2, c3 = st.columns(3)
     avoided = c1.selectbox("Instead of taking...", list(VEHICLE_FACTORS.keys()),
                            format_func=lambda k: VEHICLE_FACTORS[k]["label"],
@@ -553,10 +833,10 @@ def impact_page():
         (f"₹{est['fuel_cost_saved_inr']:.0f}" if est['fuel_cost_saved_inr'] is not None else "-",
          "Fuel cost saved"),
     ])
-    with st.expander("Assumptions used"):
+    with st.expander("Assumptions used for this estimate"):
         st.json(est["assumptions"])
 
-    if st.button("Log this as a completed action"):
+    if st.button("Log this as a completed action", key="imp_log_trip"):
         acts = st.session_state.setdefault("impact_actions", [])
         acts.append(ImpactAction(
             action_type="trip",
@@ -568,7 +848,7 @@ def impact_page():
         st.success("Action logged.")
 
     # --- AC savings ---
-    st.markdown("**Air-conditioning savings estimate**")
+    st.markdown("### Air-conditioning savings estimate")
     hrs = st.number_input("Hours of AC avoided per day (e.g. fan instead, "
                           "higher setpoint)", min_value=0.0, value=2.0, step=0.5,
                           key="imp_ac")
@@ -579,7 +859,7 @@ def impact_page():
             (f"{ac['co2e_saved_kg_per_year']:.0f} kg", "CO₂e / year"),
             (f"₹{ac['indicative_cost_saved_inr_per_year']:.0f}", "Cost / year (indicative)"),
         ])
-        if st.button("Log AC savings for today"):
+        if st.button("Log AC savings for today", key="imp_log_ac"):
             acts = st.session_state.setdefault("impact_actions", [])
             acts.append(ImpactAction(
                 action_type="energy",
@@ -590,7 +870,7 @@ def impact_page():
             st.success("Logged.")
 
     # --- Log ---
-    st.markdown("**Your logged actions**")
+    st.markdown("### Your logged actions")
     acts: list[ImpactAction] = st.session_state.get("impact_actions", [])
     if not acts:
         st.caption("Nothing logged yet - use the calculators above.")
@@ -602,21 +882,28 @@ def impact_page():
             (f"{summ['trip_km']:.0f} km", "Green km"),
             (f"₹{summ['indicative_cost_saved_inr']:.0f}", "Indicative ₹ saved"),
         ])
+        # simple cumulative chart
+        daily: dict[str, float] = {}
+        for a in acts:
+            daily[a.date or "undated"] = daily.get(a.date or "undated", 0) + a.co2e_kg()
+        if len(daily) > 1:
+            chart_df = pd.DataFrame(
+                sorted(daily.items()), columns=["date", "co2e_kg"])
+            st.bar_chart(chart_df.set_index("date"), height=220)
         st.dataframe(pd.DataFrame([a.as_dict() for a in acts]),
                      width="stretch")
         c1, c2 = st.columns(2)
         c1.download_button("Download impact report (CSV)",
                            data=actions_to_csv(acts),
                            file_name="airaware_impact_report.csv",
-                           mime="text/csv")
-        if c2.button("Clear log"):
+                           mime="text/csv", key="imp_dl")
+        if c2.button("Clear log", key="imp_clear"):
             st.session_state["impact_actions"] = []
             st.rerun()
 
-    st.caption(f"Grid factor used for electricity: "
-               f"{INDIAN_GRID_KG_CO2_PER_KWH} kg CO₂/kWh (Indian average "
-               "estimate). Vehicle factors are generic; real results depend "
-               "on your vehicle and driving.")
+    st.caption("Vehicle factors are generic estimates; real savings depend "
+               "on your vehicle, driving style and occupancy. Grid factor: "
+               "0.82 kg CO₂/kWh (Indian average).")
 
 
 # ===========================================================================
@@ -625,19 +912,20 @@ def impact_page():
 
 def community_page():
     ui.hero("Family & Community",
-            "Household checklists, kids' education and neighbourhood action.")
+            "Small household habits add up - checklists, kid-friendly "
+            "explanations and ideas for your neighbourhood.")
 
-    st.markdown("**Household air-quality checklist**")
+    st.markdown("### Household air-quality checklist")
     checklist_items = [
         "Keep windows closed on Poor-or-worse days; ventilate on clean days",
-        "Run kitchen exhaust fan for every cooking session",
+        "Run the kitchen exhaust fan for every cooking session",
         "No smoking, incense or mosquito coils indoors",
         "Damp-dust and wet-mop weekly",
         "Shoes off at the door",
-        "HEPA purifier in the room used most (bedroom priority)",
+        "HEPA purifier in the most-used room (bedroom first)",
         "AC filters cleaned monthly",
-        "Vehicle idling minimised near home",
-        "School commute planned to avoid peak traffic where possible",
+        "Avoid vehicle idling near the home",
+        "Plan school/office commutes around peak traffic where possible",
     ]
     done = st.session_state.setdefault("community_checklist", {})
     for i, item in enumerate(checklist_items):
@@ -645,39 +933,45 @@ def community_page():
     pct = sum(done.values()) / len(checklist_items) * 100
     st.progress(pct / 100, text=f"{pct:.0f}% complete")
 
-    ui.hr()
-    st.markdown("**For children - simple explanation**")
-    st.markdown(
-        "Air pollution is like tiny invisible dust floating in the air. "
-        "Some days there is more of it - we can see it as haze. When the "
-        "air is bad, our lungs work harder, just like running up stairs. "
-        "We can help by **walking or cycling** to nearby places (cleaner "
-        "than cars), **closing windows** on smoky days, and **saving "
-        "electricity** so power plants burn less fuel.")
+    ui.section_title("For children - a simple explanation")
+    ui.card("Why the air matters",
+            body_html="<p>Air pollution is like tiny invisible dust floating "
+                      "in the air. Some days there is more of it - we can "
+                      "see it as haze. When the air is bad, our lungs work "
+                      "harder, just like running up stairs. We can help by "
+                      "<b>walking or cycling</b> to nearby places (cleaner "
+                      "than cars), <b>closing windows</b> on smoky days, and "
+                      "<b>saving electricity</b> so power plants burn less "
+                      "fuel.</p>")
 
-    st.markdown("**Community action ideas**")
+    ui.section_title("Community action ideas")
     st.markdown(
-        "- **Car-free day** - pick one day a week where your household uses "
-        "only walking, cycling or transit.\n"
-        "- **Neighbourhood clean-up** - collect roadside waste that would "
-        "otherwise be burned.\n"
-        "- **Tree-drive** - coordinate with your RWAs/school for native "
+        "- **Car-free day** - one day a week where the household uses only "
+        "walking, cycling or transit.\n"
+        "- **Neighbourhood clean-up** - collect roadside waste before it is "
+        "burned.\n"
+        "- **Tree drive** - coordinate with your RWAs or school for native "
         "saplings.\n"
-        "- **School awareness** - share the kids' explainer above with "
-        "teachers; many schools run 'clean commute' weeks.\n"
-        "- **Report violations** - dusty construction without sprinkling, "
-        "open garbage burning; log them on your municipal app.")
+        "- **School awareness** - share the kids' explainer with teachers; "
+        "many schools run 'clean commute' weeks.\n"
+        "- **Report violations** - dusty construction without sprinkling or "
+        "open garbage burning; log them on your municipal app."
+    )
 
-    ui.hr()
+    ui.section_title("Today's family plan")
     m = _meas()
     if m and m.display_aqi is not None:
-        st.markdown("**Family plan for today's air**")
         profile = st.session_state.get("profile")
         has_kids = profile and profile.household == "children"
-        plan = build_daily_plan(m, profile.outdoor_pref if profile else "moderate",
-                                has_children=bool(has_kids))
+        plan = build_daily_plan(
+            m, profile.outdoor_pref if profile else "moderate",
+            has_children=bool(has_kids))
+        plan_state = st.session_state.get("daily_plan", {})
         for p in plan:
-            st.markdown(f"- **{p.slot_label}:** {st.session_state.get('daily_plan', {}).get(p.slot_key, p.guidance)}")
+            st.markdown(f"- **{p.slot_label}:** "
+                        f"{plan_state.get(p.slot_key, p.guidance)}")
+    else:
+        st.caption("Load a reading on Home to see today's family plan.")
 
 
 # ===========================================================================
@@ -686,60 +980,65 @@ def community_page():
 
 def about_page():
     ui.hero("About & Data Sources",
-            "Methodology, assumptions and honest limitations.")
+            "The methodology, assumptions and honest limitations behind "
+            "every number AirAware shows you.")
 
-    st.markdown("**How AQI is calculated**")
+    st.markdown("### How AQI is calculated")
     st.markdown(
         "AirAware AI implements the **CPCB National Air Quality Index "
         "(NAQI)** method: each measured pollutant (PM2.5, PM10, NO₂, SO₂, "
         "CO, O₃, NH₃) is converted to a sub-index via published "
         "concentration breakpoints using piecewise-linear interpolation. "
-        "The overall AQI is the **maximum** sub-index, and that pollutant "
-        "is reported as dominant. If only some pollutants are measured, "
-        "the result is explicitly labelled *partial* - the true AQI could "
-        "be higher.\n\n"
-        "Averaging periods follow CPCB: 24-hour for most pollutants, "
-        "8-hour for O₃.")
+        "The overall AQI is the **maximum** sub-index and that pollutant is "
+        "the dominant one. Averaging periods follow CPCB (24-hour, 8-hour "
+        "for O₃). Partial measurements are labelled as partial - the true "
+        "AQI could be higher.\n\n"
+        "Categories: Good (0-50) · Satisfactory (51-100) · Moderate "
+        "(101-200) · Poor (201-300) · Very Poor (301-400) · Severe "
+        "(401-500) · Severe+ (>500).")
 
-    st.markdown("**Data sources**")
+    st.markdown("### Data sources & provenance")
     st.markdown(
-        "- **User-entered measurements** - whatever you type; treated as "
-        "user-provided, unverified.\n"
-        "- **CSV imports** - parsed and validated locally; nothing is "
-        "uploaded anywhere.\n"
-        "- **Sample demonstration data** - illustrative values included for "
-        "demo purposes, always labelled as non-live.\n"
-        "- **No live feed is bundled** - the app works fully offline and "
-        "does not fabricate readings. To use live data, import official "
-        "CPCB/state-board AQI tables or OpenAQ exports as CSV.\n\n"
+        "- **Your entries** - treated as user-provided, unverified.\n"
+        "- **CSV imports** - parsed and validated locally; nothing uploaded.\n"
+        "- **Sample data** - illustrative demo values, always labelled.\n"
+        "- **No live feed is bundled** - for live data, import official "
+        "CPCB/state-board/OpenAQ exports as CSV.\n\n"
         "Every measurement records value, unit, source and timestamp.")
 
-    st.markdown("**Recommendation methodology**")
+    st.markdown("### Recommendation methodology")
     st.markdown(
         "Recommendations come from a deterministic Python rule engine "
         "mapping AQI category + dominant pollutant + your profile to "
-        "actionable guidance. **No generative AI service is integrated** - "
-        "all 'AI' output is these auditable rules.")
+        "actionable guidance. Every item shows what to do, why it matters, "
+        "when, approximate cost and an alternative where meaningful.\n\n"
+        "**Optional AI:** if `GEMINI_API_KEY` is configured in Streamlit "
+        "secrets, a Gemini model can rewrite the briefing in natural "
+        "language. Output is always labelled *AI-generated*; without the "
+        "key, the rule engine alone powers the app. No other AI service is "
+        "used or claimed.")
 
-    st.markdown("**Impact calculation assumptions**")
+    st.markdown("### Impact calculation assumptions")
     st.markdown(
         "Vehicle CO₂e factors are generic estimates (petrol car ≈0.19 "
-        "kg/km, electric car ≈0.10 kg/km on the Indian grid, metro ≈0.02 "
-        "kg/passenger-km). Grid intensity ≈0.82 kg CO₂/kWh. Fuel prices "
-        "and economy are defaults you can override. Figures are estimates "
-        "of climate benefit, not measured reductions.")
+        "kg/km, electric car ≈0.10 kg/km on the Indian grid, metro "
+        "≈0.02 kg/passenger-km). Grid intensity ≈0.82 kg CO₂/kWh. Fuel "
+        "prices and economy are defaults you can override. Figures are "
+        "estimates of climate benefit, not measured reductions.")
 
-    st.markdown("**Technology**")
-    st.markdown("Python 3.14 · Streamlit · pandas · plotly. No database, "
-                "no API keys, no paid services. All state is kept in the "
-                "browser session; you can download CSV reports.")
+    st.markdown("### Technology")
+    st.markdown("Python 3.14 · Streamlit · pandas · plotly · optional "
+                "Gemini API (stdlib urllib only). No database, no required "
+                "API keys, no paid services. State lives in your browser "
+                "session; reports are downloadable files.")
 
-    st.markdown("**Limitations & future work**")
+    st.markdown("### Limitations & future work")
     st.markdown(
-        "- No live monitoring feed is included (deliberately, to avoid "
-        "fabricated data); CSV import covers official exports.\n"
-        "- Recommendations are rule-based, not personalised ML.\n"
+        "- No live monitoring feed (deliberate - no fabricated data).\n"
+        "- Recommendations are rule-based, not ML-personalised.\n"
         "- Indoor guidance is qualitative; a real PM2.5 sensor would enable "
-        "quantitative indoor tracking.\n"
-        "- Future: CPCB/OpenAQ live fetch, multi-day personal exposure "
-        "logging, family accounts.")
+        "quantitative tracking.\n"
+        "- Hourly pollution is not predicted; plans adapt to the current "
+        "reading only.\n"
+        "- Future: CPCB/OpenAQ live fetch, multi-day exposure logging, "
+        "household sharing.")

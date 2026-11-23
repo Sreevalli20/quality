@@ -29,24 +29,28 @@ and honest data provenance.
 
 | Module | What it does |
 |---|---|
-| **Home** | Environmental dashboard: current reading, alerts, quick access, awareness notes |
-| **Air Quality Explorer** | CPCB AQI calculation from PM2.5/PM10/NO₂/SO₂/CO/O₃/NH₃, sub-index charts, gauge, CSV import & comparison |
-| **Personal AI Assistant** | Profile-aware recommendation engine (rule-based, fully auditable) covering today/avoid/alternatives/indoor/next steps |
-| **My Daily Air Plan** | Editable hour-by-hour schedule adapted to current AQI; downloadable CSV |
-| **Indoor Air Guardian** | Room-by-room advice (bedroom, living room, kitchen, study, children's room), budget tiers (free → higher-cost), ventilation guidance |
+| **Home** | Welcoming dashboard with three guided entry choices (manual entry, CSV upload, labelled sample data), alerts, feature tour and module CTAs |
+| **Air Quality Explorer** | Guided pollutant form (empty fields, unit + plain-language hints), CPCB AQI assessment, sub-index charts, gauge, health guidance, data-completeness warnings, CSV comparison |
+| **Personal AI Assistant** | Companion-style profile form → prioritised advice with *what / why / when / cost / alternative* per item; optional Gemini briefing via secrets; Markdown personal report download |
+| **My Daily Air Plan** | Editable hour-by-hour schedule adapted to current AQI; auto-refreshes when the reading changes; CSV download |
+| **Indoor Air Guardian** | Room-picker (bedroom, living room, kitchen, study, children's room), budget-tier tabs (free → higher-cost), smart ventilation advice |
 | **Green Lifestyle Planner** | Personalised sustainable-living options across transport, energy, waste and household — with honest benefits *and* limitations |
-| **Environmental Impact** | CO₂e savings estimator for mode shifts and AC reduction, action log, CSV report |
-| **Family & Community** | Household checklist with progress, child-friendly explainer, community action ideas |
+| **Environmental Impact** | CO₂e savings estimator for mode shifts and AC reduction, action log with cumulative chart, CSV report |
+| **Family & Community** | Household checklist with progress, child-friendly explainer, community action ideas, family plan |
 | **About & Data Sources** | Methodology, assumptions and limitations |
 
 ## How it works
 
-1. **Load data** — enter pollutant concentrations or AQI manually in the
-   sidebar, upload a CSV, or select a labelled **sample demonstration** set.
+1. **Home → Start your air-quality check** — choose one of three guided
+   paths: *enter measurements* (empty fields with unit hints, partial data
+   OK), *upload a CSV*, or *explore labelled sample data*.
 2. **Assess** — pollutant concentrations are converted to sub-indices using
    official CPCB breakpoints; the overall AQI is the maximum sub-index.
 3. **Decide** — a deterministic rule engine combines the AQI category,
-   dominant pollutant and your profile into prioritised recommendations.
+   dominant pollutant and your profile into prioritised recommendations,
+   each with what/why/when/cost/alternative.
+4. **Act & track** — daily plan, indoor improvements, greener swaps and a
+   personal impact log with downloadable reports.
 
 ## AQI calculation methodology
 
@@ -90,9 +94,18 @@ AQI category + dominant pollutant + user profile
     → prioritised actions with explicit reasons
 ```
 
-Every recommendation displays **why** it was given, so the logic is fully
-auditable. **No generative AI service is integrated** — the app never claims
-to use Gemini, ChatGPT or any other model.
+Every recommendation displays **what to do, why it matters, when, an
+approximate cost (only where defensible) and a practical alternative** —
+so the logic is fully auditable.
+
+**Optional Gemini enhancement:** if `GEMINI_API_KEY` (and optionally
+`GEMINI_MODEL`, default `gemini-2.0-flash`) is set in
+`.streamlit/secrets.toml` or Streamlit Cloud secrets, the assistant can
+generate a natural-language briefing via Google's Gemini API. The call
+uses only the Python standard library (`urllib`), times out gracefully,
+and returns `None` on any failure — the rule engine output is always
+available underneath. AI output is **always labelled "AI-generated"**; the
+app never claims generative AI was used when it was not.
 
 ## Environmental impact assumptions
 
@@ -117,8 +130,9 @@ from local PM2.5 reductions.
 ## Technology
 
 - **Python 3.14.6** · **Streamlit** (UI) · **pandas** (CSV) · **plotly** (charts)
-- No database, no API keys, no paid services, no secrets.
-- All state lives in the browser session; reports are downloadable CSVs.
+- Optional **Gemini API** via stdlib `urllib` — only when a key is configured
+- No database, no required API keys, no paid services, no secrets in code
+- All state lives in the browser session; reports are downloadable files
 
 ## Project structure
 
@@ -133,8 +147,10 @@ airaware/
   lifestyle.py          Green lifestyle options + personalisation
   impact.py             Emission factors & impact calculations
   alerts.py             Rule-based alerts with severity labels
+  ai.py                 Optional Gemini briefing (stdlib urllib, secrets-gated)
+  report.py             Personal Markdown report generator
   charts.py             Plotly chart helpers
-  ui.py                 CSS, cards, badges
+  ui.py                 Design system, CSS, cards, navigation helpers
   pages.py              Page renderers for all modules
 tests/                  pytest suite (AQI, data, recommendations, impact, planner)
 .streamlit/config.toml  Theme & server config
@@ -174,15 +190,17 @@ pip install pytest
 python -m pytest tests/ -v
 ```
 
-61 tests cover AQI breakpoints, category boundaries, invalid inputs,
-CSV parsing edge cases, recommendation rules, planner logic and emission
-calculations.
+61+ tests cover AQI breakpoints, category boundaries, invalid inputs,
+CSV parsing edge cases, recommendation rules, planner logic, emission
+calculations, the optional Gemini fallback and report generation.
 
 ## Streamlit Community Cloud deployment
 
 1. Push this repository to GitHub (public).
 2. In Streamlit Community Cloud: **New app → select repo → main file `app.py`**.
 3. Requirements are read from `requirements.txt` automatically.
+4. *(Optional)* Add `GEMINI_API_KEY` under **Settings → Secrets** to enable
+   the AI briefing; omit it and the rule engine powers everything.
 
 **Python version note:** the project targets **Python 3.14.6**. At the time
 of writing, Streamlit Community Cloud's default runtime is an earlier 3.x;
@@ -195,9 +213,11 @@ submission and disclose any mismatch honestly.
 
 - File uploads limited to 2 MB / 5,000 rows; all parsing is local and
   defensive (bad lines skipped, values range-checked).
-- No secrets, no external requests, no telemetry.
-- No personal data is persisted anywhere; everything lives in the session.
-- Downloadable CSVs are generated locally.
+- Optional Gemini key is read from Streamlit secrets only — never
+  hardcoded, never logged, and the API call has a 25 s timeout with
+  graceful fallback.
+- No telemetry. No personal data is persisted anywhere; everything lives
+  in the session or in files you explicitly download.
 
 ## Limitations
 
