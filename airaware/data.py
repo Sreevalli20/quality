@@ -429,6 +429,25 @@ def parse_measurements_csv(file_bytes: bytes, filename: str = "upload.csv"
     return deduped, warnings[:10]
 
 
+MAX_HISTORY = 200
+
+
+def record_measurement_history(history: list[MeasurementSet],
+                               m: MeasurementSet,
+                               cap: int = MAX_HISTORY) -> list[MeasurementSet]:
+    """Append ``m`` to a measurement history unless already present.
+
+    Used for the day-ahead planning outlook's session trend: repeated
+    readings during a session reveal whether pollution is rising or
+    falling. History is capped and never persisted beyond the browser
+    session. Returns a NEW list; the input is not mutated.
+    """
+    fp = measurement_fingerprint(m)
+    if any(measurement_fingerprint(h) == fp for h in history):
+        return list(history)
+    return (list(history) + [m])[-cap:]
+
+
 def measurement_fingerprint(m: MeasurementSet) -> tuple:
     """Stable identity for a measurement, used for staleness checks.
 
