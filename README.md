@@ -29,10 +29,10 @@ and honest data provenance.
 
 | Module | What it does |
 |---|---|
-| **Home** | Welcoming dashboard with guided entry choices (manual entry, CSV upload, labelled sample data, optional live provider fetch), alerts, feature tour and module CTAs |
+| **Home** | Welcoming dashboard with guided entry choices (manual entry, CSV upload, labelled sample data, optional live provider fetch), a "Today's intelligence" card (AQI, dominant pollutant, best outdoor window, indoor-first flag, plan progress), alerts, feature tour and module CTAs |
 | **Air Quality Explorer** | Guided pollutant form (empty fields, unit + plain-language hints), CPCB AQI assessment, sub-index charts, gauge, health guidance, data-completeness warnings, CSV comparison |
 | **Personal AI Assistant** | Companion-style profile form → prioritised advice with *what / why / when / cost / alternative* per item; conversational follow-up Q&A labelled *AI* vs *rule-based*; optional AI briefing via pluggable provider (Gemini); stale-briefing invalidation; Markdown personal report download |
-| **My Daily Air Plan** | Editable hour-by-hour schedule adapted to current AQI with a "now" time-slot marker; per-slot completion checkboxes with live progress; regenerates when the reading changes; CSV download |
+| **My Daily Air Plan** | Editable hour-by-hour schedule adapted to current AQI with a "now" time-slot marker; per-slot completion checkboxes with live progress tied to the active reading; regenerates when the reading changes; CSV download. Includes a **24-hour planning outlook**: likely AQI category per time window (diurnal model + bounded session trend, confidence-graded, never fabricated hourly readings) with best/worst windows, activity verdicts and ventilation guidance |
 | **Indoor Air Guardian** | Illustrated room-picker (bedroom, living room, kitchen, study, children's room), budget-tier tabs (free → higher-cost), smart ventilation advice, indoor-air sources guide |
 | **Green Lifestyle Planner** | Personalised sustainable-living options across transport, energy, waste and household — with honest benefits *and* limitations; "I'll try this" shortlisting and a bridge to impact tracking |
 | **Environmental Impact** | CO₂e savings estimator for mode shifts and AC reduction, action log with cumulative chart, CSV report |
@@ -49,7 +49,9 @@ and honest data provenance.
    official CPCB breakpoints; the overall AQI is the maximum sub-index.
 3. **Decide** — a deterministic rule engine combines the AQI category,
    dominant pollutant and your profile into prioritised recommendations,
-   each with what/why/when/cost/alternative.
+   each with what/why/when/cost/alternative. A labelled **day-ahead
+   planning outlook** estimates likely AQI categories per time window so
+   you can pick the safest outdoor and ventilation windows.
 4. **Act & track** — daily plan, indoor improvements, greener swaps and a
    personal impact log with downloadable reports.
 
@@ -306,13 +308,15 @@ pip install pytest
 python -m pytest tests/ -v
 ```
 
-201 tests cover AQI breakpoints, interpolation continuity across
+225 tests cover AQI breakpoints, interpolation continuity across
 breakpoint gaps and category-boundary edge cases (including
 fractional/user-supplied AQI), invalid inputs, CSV parsing edge cases
 (punctuation-insensitive headers, unit conversion, duplicates, malformed
 lines, timestamp handling), live-provider success/failure/staleness paths,
 AI provider retries and output sanitisation, recommendation rules,
-planner logic and time-slot mapping, emission calculations, report
+planner logic and time-slot mapping, the day-ahead planning outlook
+(diurnal model, session trend, confidence grading, honesty labelling),
+emission calculations, report
 generation, HTML-escaping of user data, and Streamlit AppTest smoke tests
 that exercise navigation and key journeys across all nine pages.
 
@@ -358,16 +362,32 @@ submission and disclose any mismatch honestly.
   AI layer only re-explains them).
 - Indoor guidance is qualitative; a real PM2.5 sensor would enable
   quantitative tracking.
-- Hourly pollution is not predicted — the planner adapts to the *current*
-  reading only (the "now" marker reflects time of day, not a forecast).
+- The 24-hour outlook is a **labelled planning estimate** (diurnal
+  model + bounded session trend), not an official hourly forecast; CPCB
+  publishes no public forecast feed. A verified live forecast API could
+  replace it in future.
 - Impact figures are generic estimates; the new mode's own fare is not
   subtracted from "fuel saved".
 
 ## Future improvements
 
+- A verified live forecast feed (e.g. Google Air Quality API forecast)
+  to replace the labelled planning estimate.
 - Additional live providers (CPCB/state-board endpoints where public).
 - Multi-day exposure logging and personal AQI history.
 - Family/household sharing via local exports.
+
+## Competition submission (PromptWars Virtual — Challenge 06)
+
+- [`docs/competition/narrative.md`](docs/competition/narrative.md) —
+  build-in-public narrative for the required blog/LinkedIn post.
+- [`docs/competition/demo-script.md`](docs/competition/demo-script.md) —
+  2–3 minute demo walkthrough.
+- [`docs/competition/checklist.md`](docs/competition/checklist.md) —
+  submission checklist with status.
+- [`docs/competition/scorecard.md`](docs/competition/scorecard.md) —
+  provisional self-assessment (no official rubric is published).
+- Screenshots: `shots/final/` (desktop, tablet, mobile, all nine pages).
 
 ## License
 
