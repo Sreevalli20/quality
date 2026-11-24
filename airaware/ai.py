@@ -32,12 +32,9 @@ import re
 import time
 import urllib.error
 import urllib.request
-from typing import Optional, Protocol
+from typing import Protocol
 
-try:
-    import streamlit as st
-except Exception:  # noqa: BLE001 # pragma: no cover - unit tests without runtime
-    st = None  # type: ignore[assignment]
+import airaware.secretsutil as secretsutil
 
 DEFAULT_MODEL = "gemini-2.0-flash"
 _API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
@@ -63,13 +60,12 @@ _SYSTEM_INSTRUCTION = (
 
 
 def _secrets_get(key: str, default=None):
-    """Safely read a secret; returns default outside Streamlit runtime."""
-    if st is None:
-        return default
-    try:
-        return st.secrets.get(key, default)
-    except Exception:  # noqa: BLE001 - secrets may be unavailable/malformed
-        return default
+    """Safely read a secret; returns default outside Streamlit runtime.
+
+    Thin wrapper kept as a module-level name so tests can monkeypatch
+    ``ai._secrets_get``; the implementation lives in secretsutil.
+    """
+    return secretsutil.secrets_get(key, default)
 
 
 # ---------------------------------------------------------------------------
@@ -90,7 +86,7 @@ class TextProvider(Protocol):
         ...
 
     def generate(self, prompt: str,
-                 max_output_tokens: int = 1200) -> Optional[str]:
+                 max_output_tokens: int = 1200) -> str | None:
         """Return generated text, or None on ANY failure."""
         ...
 
@@ -117,7 +113,7 @@ def sanitize_for_prompt(text: object, limit: int = 800) -> str:
     return s[:limit]
 
 
-def sanitize_ai_output(text: object, limit: int = _MAX_OUTPUT_CHARS) -> Optional[str]:
+def sanitize_ai_output(text: object, limit: int = _MAX_OUTPUT_CHARS) -> str | None:
     """Validate and clean model output before display.
 
     Returns None for empty/non-string output; otherwise strips control
@@ -148,7 +144,7 @@ class GeminiProvider:
         return str(_secrets_get("GEMINI_MODEL", DEFAULT_MODEL))
 
     def generate(self, prompt: str,
-                 max_output_tokens: int = 1200) -> Optional[str]:
+                 max_output_tokens: int = 1200) -> str | None:
         api_key = _secrets_get("GEMINI_API_KEY")
         if not api_key:
             return None
@@ -194,7 +190,7 @@ class GeminiProvider:
 _PROVIDER_CLASSES = (GeminiProvider,)
 
 
-def get_provider() -> Optional[TextProvider]:
+def get_provider() -> TextProvider | None:
     """First configured text provider, or None (rule engine only)."""
     for cls in _PROVIDER_CLASSES:
         p = cls()
@@ -216,7 +212,7 @@ def gemini_model() -> str:
     return GeminiProvider().model()
 
 
-def generate_text(prompt: str, max_output_tokens: int = 1200) -> Optional[str]:
+def generate_text(prompt: str, max_output_tokens: int = 1200) -> str | None:
     """Generate text via the first configured provider.
 
     Returns the sanitised generated text, or None on ANY failure (no key,

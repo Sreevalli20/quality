@@ -14,9 +14,9 @@ import streamlit as st
 # sys.modules and raises a clear ModuleNotFoundError if the file is
 # missing, unlike `from pkg import sub` which can surface a bare
 # KeyError during partial/stale deployments.
-import airaware.pages as pages
-import airaware.tzutil as tzutil
-import airaware.ui as ui
+import airaware.pages as pages  # noqa: PLR0402
+import airaware.tzutil as tzutil  # noqa: PLR0402
+import airaware.ui as ui  # noqa: PLR0402
 from airaware.aqi import category_color
 
 NAV = [

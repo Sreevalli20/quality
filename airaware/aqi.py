@@ -17,7 +17,6 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 from itertools import pairwise
-from typing import Optional
 
 # CPCB pollutant definitions: (display name, unit, averaging period)
 POLLUTANTS: dict[str, dict[str, str]] = {
@@ -74,6 +73,22 @@ MAX_REASONABLE: dict[str, float] = {
 AQI_MAX = 500.0
 AQI_EXTREME_THRESHOLD = 500.0
 
+
+def _corner_points(pollutant: str) -> list[tuple[float, float]]:
+    """Piecewise-linear curve points for one pollutant's breakpoints."""
+    pts: list[tuple[float, float]] = []
+    for bp_lo, bp_hi, aqi_lo, aqi_hi in _BREAKPOINTS[pollutant]:
+        pts.append((float(bp_lo), float(aqi_lo)))
+        pts.append((float(bp_hi), float(aqi_hi)))
+    return pts
+
+
+# Interpolation nodes are fixed per pollutant - compute them once at import
+# instead of rebuilding the point list on every sub-index call.
+_BREAKPOINT_POINTS: dict[str, list[tuple[float, float]]] = {
+    p: _corner_points(p) for p in _BREAKPOINTS
+}
+
 CATEGORIES: list[dict] = [
     {"name": "Good", "min": 0, "max": 50, "color": "#1a9850",
      "hex": "#1a9850",
@@ -99,7 +114,7 @@ CATEGORIES: list[dict] = [
 ]
 
 
-def pollutant_sub_index(pollutant: str, concentration: float) -> Optional[float]:
+def pollutant_sub_index(pollutant: str, concentration: float) -> float | None:
     """Return the AQI sub-index for one pollutant concentration.
 
     Returns None for unknown pollutants or invalid (negative/NaN) values.
@@ -122,10 +137,7 @@ def pollutant_sub_index(pollutant: str, concentration: float) -> Optional[float]
     # 1-unit gaps; interpolating continuously across the corners avoids the
     # artificial AQI jumps a band-wise lookup would produce (e.g. PM2.5
     # 30.0 -> 50 but 30.01 -> 51).
-    pts: list[tuple[float, float]] = []
-    for bp_lo, bp_hi, aqi_lo, aqi_hi in _BREAKPOINTS[pollutant]:
-        pts.append((float(bp_lo), float(aqi_lo)))
-        pts.append((float(bp_hi), float(aqi_hi)))
+    pts = _BREAKPOINT_POINTS[pollutant]
     if c <= pts[0][0]:
         return pts[0][1]
     for (x0, y0), (x1, y1) in pairwise(pts):
@@ -154,12 +166,13 @@ def category_for(aqi: float) -> dict:
     return CATEGORIES[-1]
 
 
+_COLOR_BY_NAME = {cat["name"]: cat["color"] for cat in CATEGORIES}
+_CATEGORY_NAMES = tuple(cat["name"] for cat in CATEGORIES)
+
+
 def category_color(name: str | None) -> str:
     """Hex colour for a CPCB category name."""
-    for cat in CATEGORIES:
-        if cat["name"] == name:
-            return cat["color"]
-    return "#999999"
+    return _COLOR_BY_NAME.get(name, "#999999")
 
 
 @dataclass
@@ -179,9 +192,9 @@ class PollutantResult:
 class AqiResult:
     """Result of an AQI calculation from pollutant measurements."""
 
-    aqi: Optional[float]
-    category: Optional[dict]
-    dominant_pollutant: Optional[str]
+    aqi: float | None
+    category: dict | None
+    dominant_pollutant: str | None
     pollutant_results: list[PollutantResult] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
 
@@ -191,7 +204,7 @@ class AqiResult:
         return len(self.pollutant_results) < len(POLLUTANTS)
 
 
-def calculate_aqi(pollutants: dict[str, Optional[float]]) -> AqiResult:
+def calculate_aqi(pollutants: dict[str, float | None]) -> AqiResult:
     """Calculate AQI and sub-indices from a pollutant -> concentration map.
 
     Only keys present with valid numeric values are used. The overall AQI
@@ -253,10 +266,8 @@ def is_outdoor_safe(category_name: str, activity: str = "moderate") -> tuple[boo
     activity: 'light' (walking), 'moderate' (jogging, cycling),
     'heavy' (intense exercise, sports).
     """
-    order = ["Good", "Satisfactory", "Moderate", "Poor", "Very Poor", "Severe", "Severe+"]
-    try:
-        idx = order.index(category_name)
-    except ValueError:
+    idx = _CATEGORY_NAMES.index(category_name) if category_name in _CATEGORY_NAMES else -1
+    if idx < 0:
         return False, "Unknown air quality category."
 
     if activity == "heavy":
@@ -269,6 +280,6 @@ def is_outdoor_safe(category_name: str, activity: str = "moderate") -> tuple[boo
     safe = idx <= safe_idx
     if safe:
         return True, f"{category_name} conditions are acceptable for {activity} outdoor activity."
-    limit = order[safe_idx]
+    limit = _CATEGORY_NAMES[safe_idx]
     return False, (f"{category_name} air is not recommended for {activity} outdoor "
                    f"activity (safe up to {limit}).")

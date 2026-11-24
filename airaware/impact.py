@@ -9,7 +9,6 @@ distinction explicitly.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from typing import Optional
 
 # ---------------------------------------------------------------------------
 # Emission factors (kg CO2e per vehicle-km unless noted)
@@ -62,11 +61,11 @@ class ImpactAction:
     """One logged sustainable action."""
     action_type: str        # 'trip' | 'energy'
     description: str
-    vehicle: Optional[str] = None       # for trip actions
+    vehicle: str | None = None       # for trip actions
     distance_km: float = 0.0            # for trip actions
-    avoided_vehicle: Optional[str] = None  # vehicle NOT used (for trip actions)
+    avoided_vehicle: str | None = None  # vehicle NOT used (for trip actions)
     kwh_saved: float = 0.0              # for energy actions
-    cost_saved_inr: Optional[float] = None
+    cost_saved_inr: float | None = None
     date: str = ""
 
     def co2e_kg(self) -> float:
@@ -85,8 +84,8 @@ class ImpactAction:
 
 
 def estimate_trip_savings(new_mode: str, avoided_mode: str, distance_km: float,
-                          fuel_price_inr_litre: Optional[float] = None,
-                          km_per_litre: Optional[float] = None) -> dict:
+                          fuel_price_inr_litre: float | None = None,
+                          km_per_litre: float | None = None) -> dict:
     """Estimate CO2e and fuel-cost savings for replacing one trip mode."""
     if new_mode not in VEHICLE_FACTORS or avoided_mode not in VEHICLE_FACTORS:
         raise ValueError("Unknown vehicle mode.")
@@ -97,8 +96,8 @@ def estimate_trip_savings(new_mode: str, avoided_mode: str, distance_km: float,
     old_f = VEHICLE_FACTORS[avoided_mode]["kg_co2e_per_km"]
     co2e_saved = (old_f - new_f) * distance_km
 
-    fuel_saving_litres: Optional[float] = None
-    fuel_cost_saving: Optional[float] = None
+    fuel_saving_litres: float | None = None
+    fuel_cost_saving: float | None = None
     fuel = VEHICLE_FACTORS[avoided_mode].get("fuel")
     kpl = km_per_litre if km_per_litre else DEFAULT_KM_PER_LITRE.get(avoided_mode)
     price = fuel_price_inr_litre or DEFAULT_FUEL_PRICE_INR_PER_LITRE.get(fuel or "")

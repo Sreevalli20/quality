@@ -11,7 +11,6 @@ and slot markers reflect their clock, not the server's.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 try:
@@ -59,7 +58,7 @@ def user_tz() -> ZoneInfo:
         return ZoneInfo(DEFAULT_TZ)
 
 
-def local_now(tz: Optional[ZoneInfo] = None) -> datetime:
+def local_now(tz: ZoneInfo | None = None) -> datetime:
     """Current time expressed in the user's timezone (aware)."""
     return datetime.now(timezone.utc).astimezone(tz or user_tz())
 

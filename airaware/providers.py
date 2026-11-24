@@ -28,12 +28,14 @@ import math
 import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
-from typing import Optional, Protocol
+from typing import Protocol
 
 try:
     import streamlit as st
 except Exception:  # noqa: BLE001 # pragma: no cover - unit tests without runtime
     st = None  # type: ignore[assignment]
+
+import airaware.secretsutil as secretsutil
 
 from .aqi import POLLUTANTS
 from .data import MeasurementSet, validate_pollutant_value
@@ -52,25 +54,21 @@ _EXPECTED_UNIT = {"pm25": "ugm3", "pm10": "ugm3", "no2": "ugm3",
 
 
 def _secrets_get(key: str, default=None):
-    """Safely read a secret; returns default outside Streamlit runtime."""
-    if st is None:
-        return default
-    try:
-        return st.secrets.get(key, default)
-    except Exception:  # noqa: BLE001 - secrets may be unavailable/malformed
-        return default
+    """Safely read a secret; returns default outside Streamlit runtime.
+
+    Thin wrapper kept as a module-level name so tests can monkeypatch
+    ``providers._secrets_get``; the implementation lives in secretsutil.
+    """
+    return secretsutil.secrets_get(key, default)
 
 
-def _norm_unit(unit: object) -> str:
-    """Normalise a unit string for comparison ('µg/m³' -> 'ugm3')."""
-    s = str(unit or "").strip().lower()
-    for a, b in (("µ", "u"), ("μ", "u"), ("³", "3"), ("²", "2")):
-        s = s.replace(a, b)
-    return "".join(ch for ch in s if ch.isascii() and ch.isalnum())
+def _norm_token(value: object) -> str:
+    """Normalise a provider field name or unit for comparison.
 
-
-def _norm_param(name: object) -> str:
-    s = str(name or "").strip().lower()
+    'µg/m³' -> 'ugm3', 'PM2.5' -> 'pm25': lowercase, unify micro/mu and
+    superscripts, then drop every character that is not a-z/0-9.
+    """
+    s = str(value or "").strip().lower()
     for a, b in (("µ", "u"), ("μ", "u"), ("³", "3"), ("²", "2")):
         s = s.replace(a, b)
     return "".join(ch for ch in s if ch.isascii() and ch.isalnum())
@@ -93,7 +91,7 @@ class AirQualityProvider(Protocol):
         """Return {'ok': bool, 'detail': str} - never raises."""
         ...
 
-    def latest(self, location_hint: str = "") -> Optional[MeasurementSet]:
+    def latest(self, location_hint: str = "") -> MeasurementSet | None:
         """Return the freshest real measurement, or None on any failure."""
         ...
 
@@ -137,7 +135,7 @@ class OpenAQProvider:
         except ProviderError as exc:
             return {"ok": False, "detail": str(exc)}
 
-    def latest(self, location_hint: str = "") -> Optional[MeasurementSet]:
+    def latest(self, location_hint: str = "") -> MeasurementSet | None:
         """Fetch the freshest multi-pollutant reading for a location.
 
         ``location_hint`` is matched against OpenAQ's ``city`` field;
@@ -168,16 +166,16 @@ class OpenAQProvider:
             latest = self._get(f"/locations/{loc_id}/latest").get("results") or []
             pollutants: dict[str, float] = {}
             seen_params: set[str] = set()
-            newest_ts: Optional[datetime] = None
+            newest_ts: datetime | None = None
             skipped: list[str] = []
 
             for item in latest:
-                pname = _norm_param((item.get("parameter") or {}).get("name"))
+                pname = _norm_token((item.get("parameter") or {}).get("name"))
                 key = _PARAM_MAP.get(pname)
                 if key is None or key in seen_params:
                     continue
                 seen_params.add(key)
-                unit = _norm_unit(item.get("unit"))
+                unit = _norm_token(item.get("unit"))
                 if unit != _EXPECTED_UNIT[key]:
                     skipped.append(f"{POLLUTANTS[key]['name']} ({unit or 'unknown unit'})")
                     continue
@@ -234,7 +232,32 @@ _PROVIDER_CLASSES = (OpenAQProvider,)
 
 def available_providers() -> list[AirQualityProvider]:
     """Configured providers in failover order."""
-    return [cls() for cls in _PROVIDER_CLASSES if cls().configured()]
+    out: list[AirQualityProvider] = []
+    for cls in _PROVIDER_CLASSES:
+        p = cls()
+        if p.configured():
+            out.append(p)
+    return out
+
+
+# A provider health check is a real network call. The About page reruns on
+# every widget interaction, so results are cached briefly - 5 minutes is
+# fresh enough for a status display and avoids hammering the API. The cache
+# key is the provider *class* (provider instances are not hashable by
+# st.cache_data); all current providers are stateless, so checking a fresh
+# instance is equivalent.
+_HEALTH_CHECK_TTL_S = 300
+
+
+def _provider_health(provider_cls: type) -> dict:
+    return provider_cls().health_check()
+
+
+if st is not None:
+    _provider_health_cached = st.cache_data(
+        ttl=_HEALTH_CHECK_TTL_S, show_spinner=False)(_provider_health)
+else:  # pragma: no cover - unit tests without runtime
+    _provider_health_cached = _provider_health
 
 
 def provider_status() -> list[dict]:
@@ -243,11 +266,12 @@ def provider_status() -> list[dict]:
     for cls in _PROVIDER_CLASSES:
         p = cls()
         out.append({"name": p.name, "configured": p.configured(),
-                    "health": p.health_check() if p.configured() else None})
+                    "health": _provider_health_cached(cls)
+                    if p.configured() else None})
     return out
 
 
-def fetch_latest(location_hint: str = "") -> Optional[MeasurementSet]:
+def fetch_latest(location_hint: str = "") -> MeasurementSet | None:
     """Try each configured provider in order; return first real result."""
     for provider in available_providers():
         m = provider.latest(location_hint)

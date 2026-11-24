@@ -9,6 +9,7 @@ available to everyone.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from functools import cache
 
 from .recommendations import UserProfile
 
@@ -24,7 +25,13 @@ class LifestyleOption:
     score_boost: dict[str, int] = field(default_factory=dict)  # profile->points
 
 
+@cache
 def all_options() -> list[LifestyleOption]:
+    """The full option catalogue.
+
+    The catalogue is static, so it is built once and shared; callers must
+    not mutate the returned list (all current callers only read it).
+    """
     return [
         # ---- Transport ----
         LifestyleOption(
@@ -145,20 +152,16 @@ def personalised_options(profile: UserProfile) -> list[tuple[int, LifestyleOptio
         score = 0
         key_transport = f"transport_{profile.transport}"
         for cond in opt.score_boost:
-            if cond == "health" and "health" in profile.concerns:
-                score += opt.score_boost[cond]
-            elif cond == "cost" and ("cost" in profile.concerns or profile.budget in ("free", "low")):
-                score += opt.score_boost[cond]
-            elif cond == profile.priority:
-                score += opt.score_boost[cond]
-            elif cond == key_transport:
+            if cond == "health" and "health" in profile.concerns or cond == "cost" and ("cost" in profile.concerns or profile.budget in ("free", "low")) or cond == profile.priority or cond == key_transport:
                 score += opt.score_boost[cond]
         scored.append((score, opt))
     scored.sort(key=lambda t: -t[0])
     return scored
 
 
+@cache
 def options_by_area() -> dict[str, list[LifestyleOption]]:
+    """Options grouped by area; static catalogue, safe to share."""
     out: dict[str, list[LifestyleOption]] = {}
     for opt in all_options():
         out.setdefault(opt.area, []).append(opt)

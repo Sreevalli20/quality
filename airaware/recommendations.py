@@ -8,7 +8,6 @@ recommendation carries an explicit reason so the logic is auditable.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
 
 from .aqi import is_outdoor_safe
 from .data import MeasurementSet
@@ -51,18 +50,29 @@ class Recommendation:
                 "cost": self.cost, "alternative": self.alternative}
 
 
+# Display labels for the recommendation groups, shared by the assistant
+# page (lettered sections) and the Markdown report (prefix stripped).
+GROUP_LABELS = {
+    "understanding": "A. Understanding the situation",
+    "today": "B. What to do today",
+    "avoid": "C. What to avoid",
+    "alternatives": "D. Lower-emission alternatives",
+    "indoor": "E. Indoor protection",
+    "next_steps": "F/G. Why it matters & next steps",
+}
+
 _CATEGORY_ORDER = ["Good", "Satisfactory", "Moderate", "Poor",
                    "Very Poor", "Severe", "Severe+"]
 
 
-def _cat_index(name: Optional[str]) -> int:
+def _cat_index(name: str | None) -> int:
     try:
         return _CATEGORY_ORDER.index(name or "Good")
     except ValueError:
         return 0
 
 
-def _idx_ge(category: Optional[str], target: str) -> bool:
+def _idx_ge(category: str | None, target: str) -> bool:
     return _cat_index(category) >= _cat_index(target)
 
 

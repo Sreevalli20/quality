@@ -8,13 +8,19 @@ Sample data is always flagged and never presented as live.
 from __future__ import annotations
 
 import io
+import math
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Optional
 
 import pandas as pd
 
-from .aqi import MAX_REASONABLE, POLLUTANTS, AqiResult, calculate_aqi
+from .aqi import (
+    MAX_REASONABLE,
+    POLLUTANTS,
+    AqiResult,
+    calculate_aqi,
+    category_for,
+)
 
 MAX_CSV_BYTES = 2 * 1024 * 1024  # 2 MB upload limit
 MAX_CSV_ROWS = 5000
@@ -33,23 +39,20 @@ class MeasurementSet:
 
     location: str
     pollutants: dict[str, float] = field(default_factory=dict)
-    aqi: Optional[float] = None  # user-supplied AQI, used only if no pollutants
+    aqi: float | None = None  # user-supplied AQI, used only if no pollutants
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     source: str = "user"
     notes: str = ""
     # True when the timestamp was synthesised (e.g. CSV row had none) rather
     # than read from the data - used for dedupe and honest provenance.
     synthetic_timestamp: bool = False
-    result: Optional[AqiResult] = field(default=None, repr=False)
+    result: AqiResult | None = field(default=None, repr=False)
 
     def finalize(self) -> MeasurementSet:
         """Compute AQI from pollutants (preferred) or use supplied AQI."""
         if self.pollutants:
             self.result = calculate_aqi(self.pollutants)
         elif self.aqi is not None:
-            import math
-
-            from .aqi import category_for
             if not math.isfinite(float(self.aqi)) or float(self.aqi) < 0:
                 self.aqi = None
                 self.result = calculate_aqi({})
@@ -65,13 +68,13 @@ class MeasurementSet:
         return self
 
     @property
-    def display_aqi(self) -> Optional[float]:
+    def display_aqi(self) -> float | None:
         if self.result and self.result.aqi is not None:
             return self.result.aqi
         return self.aqi
 
     @property
-    def category_name(self) -> Optional[str]:
+    def category_name(self) -> str | None:
         if self.result and self.result.category:
             return self.result.category["name"]
         return None
@@ -135,7 +138,7 @@ INDIAN_CITIES = [
 # Validation helpers
 # ---------------------------------------------------------------------------
 
-def validate_pollutant_value(pollutant: str, value: float) -> Optional[str]:
+def validate_pollutant_value(pollutant: str, value: float) -> str | None:
     """Return an error string if invalid, else None."""
     if pollutant not in POLLUTANTS:
         return f"Unknown pollutant '{pollutant}'."
@@ -153,7 +156,7 @@ def validate_pollutant_value(pollutant: str, value: float) -> Optional[str]:
     return None
 
 
-def validate_aqi_value(aqi: float) -> Optional[str]:
+def validate_aqi_value(aqi: float) -> str | None:
     if aqi is None:
         return "AQI value is required."
     try:
@@ -355,7 +358,7 @@ def parse_measurements_csv(file_bytes: bytes, filename: str = "upload.csv"
         if invalid:
             warnings.extend(invalid[:3])
 
-        aqi_val: Optional[float] = None
+        aqi_val: float | None = None
         if aqi_col is not None and not pollutants and not pd.isna(row.iloc[aqi_col]):
             try:
                 aqi_val = float(row.iloc[aqi_col])

@@ -29,7 +29,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Optional
 from zoneinfo import ZoneInfo
 
 from . import tzutil
@@ -237,7 +236,7 @@ def _ventilation(cat_low_idx: float,
 def build_outlook(m: MeasurementSet,
                   history: list[MeasurementSet] | None = None,
                   now: datetime | None = None,
-                  tz: Optional[ZoneInfo] = None) -> DailyOutlook:
+                  tz: ZoneInfo | None = None) -> DailyOutlook:
     """Build the day-ahead planning outlook for a measurement.
 
     ``history`` is an optional list of past MeasurementSets (e.g. the
@@ -336,17 +335,17 @@ def build_outlook(m: MeasurementSet,
     ]
     notes: list[str] = []
     if dominant == "o3":
-        notes.append(("Ozone dominates today's reading - expect the "
+        notes.append("Ozone dominates today's reading - expect the "
                       "afternoon (sunny) window to be the riskiest, not "
-                      "the morning."))
+                      "the morning.")
     if trend_used:
         direction = "rising" if slope > 0 else "falling"
-        notes.append((f"Session readings show a {direction} trend "
+        notes.append(f"Session readings show a {direction} trend "
                       f"(~{abs(slope):.0f} AQI/hour over {span_h:.0f} h); "
-                      "windows are adjusted accordingly."))
+                      "windows are adjusted accordingly.")
     if age_h is not None and age_h > STALE_HOURS:
-        notes.append((f"The reading is ~{age_h:.0f} h old - treat this "
-                      "outlook as low-confidence."))
+        notes.append(f"The reading is ~{age_h:.0f} h old - treat this "
+                      "outlook as low-confidence.")
 
     return DailyOutlook(
         windows=windows, basis=basis, confidence=confidence,

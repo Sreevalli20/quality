@@ -13,10 +13,11 @@ def pollutant_bar_chart(result: AqiResult) -> go.Figure:
     """Bar chart of pollutant sub-indices with CPCB category bands."""
     fig = go.Figure()
     labels, values, colors = [], [], []
+    max_si = max(r.sub_index for r in result.pollutant_results)
     for r in result.pollutant_results:
         labels.append(f"{r.pollutant.upper()}<br>{r.concentration:g} {r.unit}")
         values.append(r.sub_index)
-        colors.append(category_color(result.category["name"]) if r.sub_index == max(x.sub_index for x in result.pollutant_results) else "#7fb3a3")
+        colors.append(category_color(result.category["name"]) if r.sub_index == max_si else "#7fb3a3")
 
     fig.add_trace(go.Bar(
         x=labels, y=values, marker_color=colors,
