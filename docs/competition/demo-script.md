@@ -1,6 +1,6 @@
 # Demonstration Script — ≈2.5 minutes
 
-Live app: https://quality-gyfoxhaaazq8o5appxggj.streamlit.app/
+Live app: https://quality-gyfoxhaaazq8o5appxggja.streamlit.app/
 (replace with the current Streamlit Cloud URL)
 
 ## 0:00–0:15 — Hook (Home)

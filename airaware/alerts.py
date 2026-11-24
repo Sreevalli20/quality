@@ -42,8 +42,12 @@ def evaluate_alerts(m: MeasurementSet | None,
 
     cat = m.category_name or "Good"
 
-    # Staleness check
-    age_h = (datetime.now(timezone.utc) - m.timestamp).total_seconds() / 3600
+    # Staleness check - normalise naive timestamps to UTC first so a
+    # naive reading can never crash the subtraction below.
+    ts = m.timestamp
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    age_h = (datetime.now(timezone.utc) - ts).total_seconds() / 3600
     if age_h > stale_hours:
         alerts.append(Alert(
             severity="caution",

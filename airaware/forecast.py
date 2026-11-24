@@ -29,7 +29,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from typing import Optional
+from zoneinfo import ZoneInfo
 
+from . import tzutil
 from .aqi import CATEGORIES, is_outdoor_safe
 from .data import MeasurementSet
 
@@ -233,14 +236,18 @@ def _ventilation(cat_low_idx: float,
 
 def build_outlook(m: MeasurementSet,
                   history: list[MeasurementSet] | None = None,
-                  now: datetime | None = None) -> DailyOutlook:
+                  now: datetime | None = None,
+                  tz: Optional[ZoneInfo] = None) -> DailyOutlook:
     """Build the day-ahead planning outlook for a measurement.
 
     ``history`` is an optional list of past MeasurementSets (e.g. the
     session history) used only for the AQI trend. ``now`` is injectable
-    for tests; defaults to current UTC time.
+    for tests; defaults to current UTC time. ``tz`` is the timezone the
+    day windows are expressed in - defaults to the user's selected
+    timezone (sidebar), never the server's.
     """
     now = now or datetime.now(timezone.utc)
+    tz = tz or tzutil.user_tz()
     base_idx = _cat_idx(m.category_name or "Good")
     dominant = (m.result.dominant_pollutant
                 if m.result else None) or (
@@ -276,7 +283,7 @@ def build_outlook(m: MeasurementSet,
     if m.is_sample:
         uncertainty += 0.4
 
-    local_now = now.astimezone()
+    local_now = now.astimezone(tz)
     windows: list[OutlookWindow] = []
     for key, label, start, end in WINDOWS:
         # Centre of the window in local hours (handles the overnight wrap).

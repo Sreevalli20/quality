@@ -127,10 +127,11 @@ def plan_summary(plan: list[PlanItem]) -> tuple[int, int]:
 
 
 def current_time_slot(hour: int | None = None) -> str:
-    """Return the slot_key covering the current local hour."""
+    """Return the slot_key covering the current hour in the user's
+    timezone (never the server's - see airaware.tzutil)."""
     if hour is None:
-        from datetime import datetime, timezone
-        hour = datetime.now(timezone.utc).astimezone().hour
+        from . import tzutil
+        hour = tzutil.local_now().hour
     if 6 <= hour < 9:
         return "morning"
     if 9 <= hour < 12:

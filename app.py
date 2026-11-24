@@ -15,6 +15,7 @@ import streamlit as st
 # missing, unlike `from pkg import sub` which can surface a bare
 # KeyError during partial/stale deployments.
 import airaware.pages as pages
+import airaware.tzutil as tzutil
 import airaware.ui as ui
 from airaware.aqi import category_color
 
@@ -143,6 +144,13 @@ def _sidebar():
                             unsafe_allow_html=True)
 
     st.sidebar.markdown("---")
+    st.sidebar.selectbox(
+        "Your timezone", tzutil.TZ_OPTIONS,
+        index=tzutil.TZ_OPTIONS.index(tzutil.user_timezone_name())
+        if tzutil.user_timezone_name() in tzutil.TZ_OPTIONS else 0,
+        key="user_tz",
+        help="Used for the daily plan's 'now' marker and the 24-hour "
+             "planning outlook windows.")
     st.sidebar.caption("AirAware AI · CPCB AQI methodology · offline-first")
 
 

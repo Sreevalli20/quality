@@ -17,6 +17,7 @@ import airaware.charts as charts
 import airaware.forecast as forecast
 import airaware.providers as providers
 import airaware.report as report
+import airaware.tzutil as tzutil
 import airaware.ui as ui
 from .alerts import evaluate_alerts
 from .aqi import CATEGORIES, POLLUTANTS, category_color, is_outdoor_safe
@@ -525,6 +526,11 @@ def _manual_entry_form(prefix: str = "", apply_immediately: bool = True):
     """Guided pollutant entry. Empty fields stay empty (no fake zeros)."""
     ui.field_label("Where are you?", "Pick a city or describe your locality.")
     loc = st.selectbox("Location", INDIAN_CITIES, key=f"{prefix}loc_entry")
+    if loc == "Custom / other location":
+        custom = st.text_input(
+            "Your location", key=f"{prefix}loc_custom",
+            placeholder="e.g. Kothrud, Pune")
+        loc = custom.strip() or "Custom location"
 
     st.markdown("**What do you know about today's air?**")
     st.caption("Leave fields empty if unknown - AirAware works with partial "
@@ -853,7 +859,8 @@ def _outlook_section(m: MeasurementSet,
                   "low": "var(--bad)"}[outlook.confidence]
     st.caption(
         f"Planning estimate · basis: {html.escape(outlook.basis)} · "
-        f"confidence: <b style='color:{conf_color}'>{outlook.confidence}</b>. "
+        f"confidence: <b style='color:{conf_color}'>{outlook.confidence}</b> · "
+        f"times shown in your timezone ({html.escape(tzutil.tz_label())}). "
         "AQI categories per time window, not measured hourly readings.")
     for n in outlook.notes:
         st.info(n)
@@ -1553,12 +1560,18 @@ def indoor_page():
     ui.section_title("Improvements by budget")
     st.caption("Indicative Indian-rupee ranges - prices vary by brand and "
                "city; planning estimates, not quotes.")
-    tab_labels = [f"{BUDGET_TIERS[k]['label']} · {BUDGET_TIERS[k]['range']}"
-                  for k in BUDGET_TIERS]
-    tabs = st.tabs(tab_labels)
+    # Short tab labels keep the tab bar inside narrow viewports; the full
+    # tier name and range are shown inside each tab.
+    tier_short = {"free": "Free", "low": "Low-cost", "moderate": "Moderate",
+                  "high": "Higher-cost"}
+    tabs = st.tabs([tier_short.get(k, k) for k in BUDGET_TIERS])
     for tab, key in zip(tabs, BUDGET_TIERS.keys()):
         with tab:
             t = BUDGET_TIERS[key]
+            st.markdown(f'<div class="aw-eyebrow" style="margin-bottom:.6rem">'
+                        f'{html.escape(t["label"])} · '
+                        f'{html.escape(t["range"])}</div>',
+                        unsafe_allow_html=True)
             for item in t["items"]:
                 st.markdown(
                     f'<div class="aw-card" style="padding:.7rem 1rem;'

@@ -1,48 +1,55 @@
 # Provisional Scorecard — Challenge 06
 
 > **No official Challenge-06 rubric is published.** promptwars.in
-describes evaluation as expert review of *functionality and narrative
-depth*; platform code-assessment signals are listed generically
-(quality, security, efficiency, testing, accessibility, alignment,
-Google services). This scorecard is a **self-assessment**, not a
-prediction — no scores are invented.
+> describes evaluation as expert review of *functionality and narrative
+> depth*; the building phase says "Google Antigravity **or other AI
+> tools**". This scorecard is an **internal self-assessment**, not a
+> prediction and not an official PromptWars result.
 
-## Criteria, evidence and gaps
+Weights (proposed, per rescue audit):
 
-| Criterion | Evidence in repo | Remaining gap |
-|---|---|---|
-| Problem alignment | Winter-smog routines (daily plan), indoor hacks (Guardian), sustainable alternatives (Lifestyle), impact explanation (Impact + CO₂e log) — all four brief elements covered | — |
-| Innovation | Measurement→decision journey; labelled 24h planning outlook; "AI explains, code computes" honesty model | Forecast is an estimate, not a live feed (documented) |
-| AI integration | Gemini provider: retries, timeouts, sanitised prompts, labelled output, graceful fallback; conversational follow-ups incl. forecast/impact questions | Gemini unverified live without API key; recommend adding `GEMINI_API_KEY` secret before judging |
-| Technical quality | 225 tests; CPCB interpolation continuity; hardened CSV; provider failover; build stamp | — |
-| Data reliability | Provenance on every reading; staleness flags; OpenAQ provider (key-gated); no fabricated data | No live forecast source; OpenAQ unverified without key |
-| User experience | 9 redesigned pages; journey Home→plan→impact; empty/loading/error states; AppTest coverage | Polish is good; further differentiation possible |
-| Visual quality | Custom design system, SVG scene art, AQI ring/gauge, Plotly charts, mobile-verified screenshots | — |
-| Accessibility | Semantic headings, labelled controls, contrast-checked buttons; no formal axe audit run | Consider an axe/Lighthouse pass for evidence |
-| Real-world usefulness | Works with zero keys via manual/CSV/sample; actionable per-budget indoor advice | Sample data is illustrative (labelled) |
-| Demonstration quality | demo-script.md + shots/final/* (desktop/tablet/mobile) | Record/ rehearse the live demo |
-| Submission completeness | checklist.md — all artifacts ready | Platform submission is manual (user action) |
+| Dimension | Weight |
+|---|---|
+| Problem alignment & real-world usefulness | 15 |
+| Functional completeness & reliability | 15 |
+| AI integration & intelligence | 15 |
+| Technical architecture & code quality | 15 |
+| UI/UX & accessibility | 15 |
+| Innovation & differentiation | 10 |
+| Data accuracy, security & trust | 5 |
+| Demonstration & submission quality | 10 |
+| **Total** | **100** |
 
-## Three highest-impact remaining improvements
+## Scores — initial (commit 3a2c72f) → final (this release)
 
-1. **Activate Gemini on the live deployment** — add `GEMINI_API_KEY`
-   to Streamlit Cloud secrets so evaluators see real AI responses, not
-   only the labelled fallback. (External action; code is ready.)
-2. **Live forecast feed** — integrate a verified forecast API (e.g.
-   Google Maps Platform Air Quality API forecast, or CPCB where
-   available) behind the same provider abstraction, keeping the
-   estimate as fallback. This is the single biggest credibility gap
-   versus competitors with paid Google services.
-3. **Accessibility evidence** — run an automated axe/Lighthouse
-   accessibility audit and fix findings; "accessibility" is a named
-   platform scoring signal and currently rests on manual review only.
+| Dimension | Initial | Final | Δ | Key evidence / change |
+|---|---|---|---|---|
+| Problem alignment & usefulness | 13/15 | 14/15 | +1 | All four brief elements present and working (routines, indoor, alternatives, impact). Verified live-rendered pages. Remaining −1: no verified live data without keys. |
+| Functional completeness & reliability | 12/15 | 14/15 | +2 | 232 tests pass (was 225). Fixed: server-timezone bug in plan "now" marker and outlook trend; naive-timestamp crash path in alerts; dead-end "Custom / other location"; mobile tab overflow. −1: live app currently behind Streamlit auth (owner action). |
+| AI integration & intelligence | 11/15 | 12/15 | +1 | Gemini provider verified in code + fallback tests; follow-up Q&A labelled AI vs rule-based; sanitised prompts. −3: no live Gemini key available to verify end-to-end; assistant still requires manual profile form before chatting. |
+| Technical architecture & code quality | 13/15 | 14/15 | +1 | Clean module split, provider abstractions, honest provenance, no circular imports, hardened CSV. +1 for tzutil module fixing a real deployment defect. −1: pages.py is a 2100-line monolith (acceptable but at the limit). |
+| UI/UX & accessibility | 11/15 | 13/15 | +2 | Playwright audit 9 pages × 3 viewports: 0 console errors, 0 page overflow, 1 h1/page, 0 missing alts. Fixed mobile overflow on Indoor tabs. −2: no formal axe/Lighthouse audit; heading-level skips remain (Streamlit-generated markup). |
+| Innovation & differentiation | 8/10 | 8/10 | 0 | Measurement→decision→plan→impact chain with labelled planning outlook is genuinely differentiated; unchanged this cycle. |
+| Data accuracy, security & trust | 5/5 | 5/5 | 0 | CPCB interpolation verified by tests; provenance everywhere; secrets gitignored; prompt-injection hygiene; no fabricated data. |
+| Demonstration & submission quality | 7/10 | 9/10 | +2 | Fixed broken live URL in demo script; scorecard made evidence-based; checklist updated. −1: live preview blocked by Streamlit auth; Gemini unverified live; submission itself is manual. |
+| **Total** | **80/100** | **89/100** | **+9** | Internal estimate only. |
 
-## Honest weaknesses (disclosed, not hidden)
+## Highest-impact remaining gaps (honest)
 
-- Forecasting is a labelled planning estimate, not an official forecast.
-- Live AQI requires `OPENAQ_API_KEY`; without it the app relies on
-  manual entry/CSV/samples.
+1. **Public live preview** — the deployed app redirects anonymous users
+   to Streamlit auth. This is the single biggest submission risk and is
+   an owner-level Streamlit Cloud setting (see checklist).
+2. **Live Gemini verification** — add `GEMINI_API_KEY` (+ optionally
+   `OPENAQ_API_KEY`) in Streamlit Cloud secrets and re-test the
+   assistant end-to-end.
+3. **Accessibility evidence** — an axe/Lighthouse pass would convert
+   manual review into artefact-backed evidence.
+
+## Disclosed weaknesses (unchanged, by design)
+
+- Forecast is a labelled planning estimate, not an official hourly
+  forecast (CPCB publishes none publicly).
 - Recommendations are rule-based, not ML-personalised.
-- The build tool was Devin (Cognition), not Google Antigravity as the
-  challenge narrative suggests — disclose tooling honestly in the
-  build-in-public post.
+- Built with Devin (Cognition), not Google Antigravity — the official
+  page allows "Google Antigravity **or other AI tools**"; disclose
+  tooling honestly in the build-in-public post.
