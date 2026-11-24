@@ -31,10 +31,10 @@ and honest data provenance.
 |---|---|
 | **Home** | Welcoming dashboard with guided entry choices (manual entry, CSV upload, labelled sample data, optional live provider fetch), alerts, feature tour and module CTAs |
 | **Air Quality Explorer** | Guided pollutant form (empty fields, unit + plain-language hints), CPCB AQI assessment, sub-index charts, gauge, health guidance, data-completeness warnings, CSV comparison |
-| **Personal AI Assistant** | Companion-style profile form → prioritised advice with *what / why / when / cost / alternative* per item; optional AI briefing via pluggable provider (Gemini); stale-briefing invalidation; Markdown personal report download |
-| **My Daily Air Plan** | Editable hour-by-hour schedule adapted to current AQI with a "now" time-slot marker; regenerates when the reading changes; CSV download |
-| **Indoor Air Guardian** | Room-picker (bedroom, living room, kitchen, study, children's room), budget-tier tabs (free → higher-cost), smart ventilation advice |
-| **Green Lifestyle Planner** | Personalised sustainable-living options across transport, energy, waste and household — with honest benefits *and* limitations |
+| **Personal AI Assistant** | Companion-style profile form → prioritised advice with *what / why / when / cost / alternative* per item; conversational follow-up Q&A labelled *AI* vs *rule-based*; optional AI briefing via pluggable provider (Gemini); stale-briefing invalidation; Markdown personal report download |
+| **My Daily Air Plan** | Editable hour-by-hour schedule adapted to current AQI with a "now" time-slot marker; per-slot completion checkboxes with live progress; regenerates when the reading changes; CSV download |
+| **Indoor Air Guardian** | Illustrated room-picker (bedroom, living room, kitchen, study, children's room), budget-tier tabs (free → higher-cost), smart ventilation advice, indoor-air sources guide |
+| **Green Lifestyle Planner** | Personalised sustainable-living options across transport, energy, waste and household — with honest benefits *and* limitations; "I'll try this" shortlisting and a bridge to impact tracking |
 | **Environmental Impact** | CO₂e savings estimator for mode shifts and AC reduction, action log with cumulative chart, CSV report |
 | **Family & Community** | Household checklist with progress, child-friendly explainer, community action ideas, family plan |
 | **About & Data Sources** | Methodology, assumptions and limitations |
@@ -275,6 +275,29 @@ Every failure mode — missing key, quota, network, malformed response —
 falls back silently to the rule-based plan, output is sanitised and
 HTML-escaped, and always labelled *AI-generated*. The app runs fully
 without a key.
+
+## Suggested demo journey (≈5 minutes)
+
+1. **Home** — hero explains the promise; choose *Explore demonstration
+   data* and load a sample city (everything is labelled *sample*, never
+   live).
+2. **Air Quality Explorer** — the gauge, dominant pollutant,
+   completeness meter and plain-language pollutant cards show how one
+   bad pollutant drives the CPCB AQI.
+3. **Personal AI Assistant** — complete the short profile form, review
+   prioritised advice (what / why / when / cost / alternative), then ask
+   a follow-up question — the answer is labelled *rule-based* (or *AI*
+   when a provider key is configured).
+4. **My Daily Air Plan** — tick slots off as you "complete" them; the
+   progress bar updates live and resets when the reading changes.
+5. **Indoor Air Guardian** — pick a room, compare budget tiers, read the
+   sources-worth-controlling guide.
+6. **Green Lifestyle Planner** — shortlist swaps with *I'll try this*.
+7. **Environmental Impact** — log a trip swap and AC savings; watch
+   CO₂e accumulate with honest assumptions.
+8. **Family & Community** — work through the household checklist.
+9. **About & Data Sources** — methodology, provider status, build stamp
+   and limitations, all in one place.
 
 ## Testing
 
