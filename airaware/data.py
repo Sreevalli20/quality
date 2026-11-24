@@ -21,6 +21,7 @@ from .aqi import (
     calculate_aqi,
     category_for,
 )
+from .textutil import normalise_token
 
 MAX_CSV_BYTES = 2 * 1024 * 1024  # 2 MB upload limit
 MAX_CSV_ROWS = 5000
@@ -61,8 +62,8 @@ class MeasurementSet:
             self.result = AqiResult(aqi=round(float(self.aqi), 1),
                                     category=cat, dominant_pollutant=None,
                                     pollutant_results=[],
-                                    notes=["AQI supplied directly; pollutant "
-                                           "breakdown unavailable."])
+                                    notes=[("AQI supplied directly; pollutant "
+                                           "breakdown unavailable.")])
         else:
             self.result = calculate_aqi({})
         return self
@@ -174,21 +175,7 @@ def validate_aqi_value(aqi: float) -> str | None:
 # CSV import
 # ---------------------------------------------------------------------------
 
-# Header normalisation: lowercase, unify micro/mu and superscripts, then
-# drop every character that is not a-z/0-9. This makes matching insensitive
-# to case, whitespace, punctuation and common unit spellings, e.g.
-# "PM2.5", "PM 2.5", "PM2.5 (µg/m3)", "pm2_5_ugm3" all reduce consistently.
-_HEADER_TRANS = str.maketrans({
-    "µ": "u", "μ": "u", "³": "3", "²": "2", "°": "",
-})
-
-
-def _normalise_header(name: str) -> str:
-    s = str(name).strip().lower().translate(_HEADER_TRANS)
-    return "".join(ch for ch in s if ch.isascii() and ch.isalnum())
-
-
-# Canonical pollutant columns. Keys are _normalise_header() output.
+# Canonical pollutant columns. Keys are normalise_token() output.
 # Values: canonical field name ('pm25', 'location', 'timestamp', ...).
 _COLUMN_ALIASES_RAW: dict[str, str] = {
     # PM2.5
@@ -235,7 +222,7 @@ _UNIT_CONVERSIONS_RAW: dict[str, tuple[str, float]] = {
 # being silently misconverted.
 
 _COLUMN_ALIASES: dict[str, str] = {
-    _normalise_header(k): v for k, v in _COLUMN_ALIASES_RAW.items()}
+    normalise_token(k): v for k, v in _COLUMN_ALIASES_RAW.items()}
 _UNIT_CONVERSIONS: dict[str, tuple[str, float]] = {
     k: v for k, v in _UNIT_CONVERSIONS_RAW.items() if v[1] is not None}
 _REJECTED_UNIT_HEADERS = {k for k, v in _UNIT_CONVERSIONS_RAW.items()
@@ -245,6 +232,43 @@ _REJECTED_UNIT_HEADERS = {k for k, v in _UNIT_CONVERSIONS_RAW.items()
 def _row_key(location: str, ts, pollutants: dict) -> tuple:
     return (location.strip().lower(), ts,
             tuple(sorted((k, round(v, 4)) for k, v in pollutants.items())))
+
+
+def _map_csv_columns(columns: pd.Index) -> tuple[
+        dict[str, tuple[int, float]], dict[str, int], set[str]]:
+    """Map CSV columns to canonical fields, keeping positional lookups.
+
+    Two passes keep precedence deterministic: standard-unit columns first,
+    then unit-variant columns only for pollutants not already covered.
+    """
+    pollutant_cols: dict[str, tuple[int, float]] = {}
+    simple_cols: dict[str, int] = {}
+    ignored_unit_cols: set[str] = set()
+
+    def _scan(unit_variants: bool):
+        for pos, col in enumerate(columns):
+            key = normalise_token(col)
+            if key in _REJECTED_UNIT_HEADERS:
+                ignored_unit_cols.add(str(col))
+                continue
+            conv = _UNIT_CONVERSIONS.get(key)
+            if conv and unit_variants:
+                p, factor = conv
+                pollutant_cols.setdefault(p, (pos, factor))
+                continue
+            canon = _COLUMN_ALIASES.get(key)
+            if canon is None or (conv and not unit_variants):
+                continue
+            if canon in POLLUTANTS:
+                if unit_variants:
+                    continue  # unit variants handled above
+                pollutant_cols.setdefault(canon, (pos, 1.0))
+            else:
+                simple_cols.setdefault(canon, pos)
+
+    _scan(unit_variants=False)
+    _scan(unit_variants=True)
+    return pollutant_cols, simple_cols, ignored_unit_cols
 
 
 def parse_measurements_csv(file_bytes: bytes, filename: str = "upload.csv"
@@ -278,37 +302,8 @@ def parse_measurements_csv(file_bytes: bytes, filename: str = "upload.csv"
     # keep only the first occurrence of each label.
     df = df.loc[:, ~df.columns.duplicated(keep="first")]
 
-    # Map columns to canonical fields, keeping POSITIONS so duplicate or
-    # oddly-cased labels can never be confused. Two passes: standard-unit
-    # columns first, then unit-variant columns only for pollutants not
-    # already covered (a real "pm25" column beats "pm25_mgm3").
-    pollutant_cols: dict[str, tuple[int, float]] = {}
-    simple_cols: dict[str, int] = {}
-    ignored_unit_cols: set[str] = set()
-
-    def _scan(unit_variants: bool):
-        for pos, col in enumerate(df.columns):
-            key = _normalise_header(col)
-            if key in _REJECTED_UNIT_HEADERS:
-                ignored_unit_cols.add(str(col))
-                continue
-            conv = _UNIT_CONVERSIONS.get(key)
-            if conv and unit_variants:
-                p, factor = conv
-                pollutant_cols.setdefault(p, (pos, factor))
-                continue
-            canon = _COLUMN_ALIASES.get(key)
-            if canon is None or (conv and not unit_variants):
-                continue
-            if canon in POLLUTANTS:
-                if unit_variants:
-                    continue  # unit variants handled above
-                pollutant_cols.setdefault(canon, (pos, 1.0))
-            else:
-                simple_cols.setdefault(canon, pos)
-
-    _scan(unit_variants=False)
-    _scan(unit_variants=True)
+    pollutant_cols, simple_cols, ignored_unit_cols = _map_csv_columns(
+        df.columns)
 
     aqi_col = simple_cols.get("aqi")
     location_col = simple_cols.get("location")

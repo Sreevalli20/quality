@@ -35,10 +35,11 @@ try:
 except Exception:  # noqa: BLE001 # pragma: no cover - unit tests without runtime
     st = None  # type: ignore[assignment]
 
-import airaware.secretsutil as secretsutil
+import airaware.secretsutil as secretsutil  # noqa: PLR0402
 
 from .aqi import POLLUTANTS
 from .data import MeasurementSet, validate_pollutant_value
+from .textutil import normalise_token
 
 _API_BASE = "https://api.openaq.org/v3"
 _TIMEOUT_S = 15
@@ -60,18 +61,6 @@ def _secrets_get(key: str, default=None):
     ``providers._secrets_get``; the implementation lives in secretsutil.
     """
     return secretsutil.secrets_get(key, default)
-
-
-def _norm_token(value: object) -> str:
-    """Normalise a provider field name or unit for comparison.
-
-    'µg/m³' -> 'ugm3', 'PM2.5' -> 'pm25': lowercase, unify micro/mu and
-    superscripts, then drop every character that is not a-z/0-9.
-    """
-    s = str(value or "").strip().lower()
-    for a, b in (("µ", "u"), ("μ", "u"), ("³", "3"), ("²", "2")):
-        s = s.replace(a, b)
-    return "".join(ch for ch in s if ch.isascii() and ch.isalnum())
 
 
 class ProviderError(Exception):
@@ -170,12 +159,12 @@ class OpenAQProvider:
             skipped: list[str] = []
 
             for item in latest:
-                pname = _norm_token((item.get("parameter") or {}).get("name"))
+                pname = normalise_token((item.get("parameter") or {}).get("name"))
                 key = _PARAM_MAP.get(pname)
                 if key is None or key in seen_params:
                     continue
                 seen_params.add(key)
-                unit = _norm_token(item.get("unit"))
+                unit = normalise_token(item.get("unit"))
                 if unit != _EXPECTED_UNIT[key]:
                     skipped.append(f"{POLLUTANTS[key]['name']} ({unit or 'unknown unit'})")
                     continue

@@ -6,7 +6,13 @@ import plotly.graph_objects as go
 
 from .aqi import AqiResult, category_color
 
-__all__ = ["category_color"]
+__all__ = [
+    "aqi_gauge",
+    "category_color",
+    "comparison_bar",
+    "outlook_chart",
+    "pollutant_bar_chart",
+]
 
 
 def pollutant_bar_chart(result: AqiResult) -> go.Figure:
@@ -33,9 +39,9 @@ def pollutant_bar_chart(result: AqiResult) -> go.Figure:
         title="Pollutant sub-indices (CPCB method)",
         yaxis_title="Sub-index (AQI scale)",
         yaxis_range=[0, max(550, max(values) * 1.15 if values else 100)],
-        height=380, margin=dict(t=50, b=80),
+        height=380, margin={"t": 50, "b": 80},
         plot_bgcolor="#fafaf7", paper_bgcolor="#ffffff",
-        font=dict(color="#1c2b21"),
+        font={"color": "#1c2b21"},
     )
     return fig
 
@@ -67,7 +73,7 @@ def aqi_gauge(aqi: float, category_name: str) -> go.Figure:
             },
         },
     ))
-    fig.update_layout(height=280, margin=dict(t=60, b=20, l=40, r=40),
+    fig.update_layout(height=280, margin={"t": 60, "b": 20, "l": 40, "r": 40},
                       paper_bgcolor="#ffffff")
     return fig
 
@@ -94,15 +100,15 @@ def outlook_chart(outlook) -> go.Figure:
         x=labels + labels[::-1],
         y=his + los[::-1],
         fill="toself", fillcolor="rgba(36,91,70,0.10)",
-        line=dict(color="rgba(36,91,70,0.25)"),
+        line={"color": "rgba(36,91,70,0.25)"},
         hoverinfo="skip", showlegend=False, name="likely range"))
     fig.add_trace(go.Scatter(
         x=labels, y=mids, mode="lines+markers+text",
         text=[w.cat_high if w.cat_low != w.cat_high
               else w.cat_low for w in outlook.windows],
-        textposition="top center", textfont=dict(size=11),
-        marker=dict(color=colors, size=11, line=dict(color="#fff", width=2)),
-        line=dict(color="#245B46", width=2),
+        textposition="top center", textfont={"size": 11},
+        marker={"color": colors, "size": 11, "line": {"color": "#fff", "width": 2}},
+        line={"color": "#245B46", "width": 2},
         hovertemplate="%{x}<br>likely %{text}<extra></extra>",
         name="planning estimate"))
     # Category boundary gridlines (integer indices = category edges).
@@ -110,16 +116,16 @@ def outlook_chart(outlook) -> go.Figure:
         fig.add_hline(y=i - 0.5, line_dash="dot",
                       line_color="#d8dcd0" if i else "#c9cfc0",
                       annotation_text=name, annotation_position="left",
-                      annotation_font=dict(size=10, color="#6d7f72"))
+                      annotation_font={"size": 10, "color": "#6d7f72"})
     fig.update_layout(
         title="Planning outlook - likely AQI category by time window",
-        yaxis=dict(range=[-0.6, len(CAT_ORDER) - 0.4],
-                   tickvals=list(range(len(CAT_ORDER))),
-                   ticktext=CAT_ORDER, showgrid=False),
-        xaxis=dict(tickangle=-25),
-        height=360, margin=dict(t=60, b=90, l=90, r=30),
+        yaxis={"range": [-0.6, len(CAT_ORDER) - 0.4],
+               "tickvals": list(range(len(CAT_ORDER))),
+               "ticktext": CAT_ORDER, "showgrid": False},
+        xaxis={"tickangle": -25},
+        height=360, margin={"t": 60, "b": 90, "l": 90, "r": 30},
         plot_bgcolor="#fafaf7", paper_bgcolor="#ffffff",
-        font=dict(color="#1c2b21"),
+        font={"color": "#1c2b21"},
         showlegend=False)
     return fig
 
@@ -133,7 +139,7 @@ def comparison_bar(measurements: list) -> go.Figure:
     fig = go.Figure(go.Bar(x=labels, y=values, marker_color=colors,
                            text=[f"{v:.0f}" for v in values], textposition="outside"))
     fig.update_layout(title="AQI comparison", yaxis_title="AQI",
-                      height=320, margin=dict(t=50, b=100),
+                      height=320, margin={"t": 50, "b": 100},
                       plot_bgcolor="#fafaf7", paper_bgcolor="#ffffff",
-                      font=dict(color="#1c2b21"))
+                      font={"color": "#1c2b21"})
     return fig

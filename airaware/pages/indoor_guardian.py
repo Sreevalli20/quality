@@ -8,7 +8,7 @@ import html
 
 import streamlit as st
 
-import airaware.ui as ui
+import airaware.ui as ui  # noqa: PLR0402
 from airaware.indoor import BUDGET_TIERS, ROOMS, ventilation_advice
 
 from ._common import _meas, _measurement_caption
@@ -115,17 +115,17 @@ def indoor_page():
         + ui.icon("alert", 20, "#b45309") + ' Sources worth controlling'
         '</h4></div>', unsafe_allow_html=True)
     sources = [
-        ("Cooking", "flask", "Frying and biomass fuels are the biggest "
-         "indoor PM2.5 sources."),
+        ("Cooking", "flask", ("Frying and biomass fuels are the biggest "
+         "indoor PM2.5 sources.")),
         ("Smoke & incense", "alert", "No safe level indoors - eliminate."),
-        ("Dust", "droplets", "Resuspends with activity; damp-clean and "
-         "use doormats."),
-        ("Cleaning products", "sprout", "Many emit VOCs; choose "
-         "fragrance-free."),
-        ("Outdoor infiltration", "wind", "Depends on today's AQI; seal "
-         "windows on bad days."),
-        ("Mould & damp", "droplets", "Worsens without ventilation; fix "
-         "leaks promptly."),
+        ("Dust", "droplets", ("Resuspends with activity; damp-clean and "
+         "use doormats.")),
+        ("Cleaning products", "sprout", ("Many emit VOCs; choose "
+         "fragrance-free.")),
+        ("Outdoor infiltration", "wind", ("Depends on today's AQI; seal "
+         "windows on bad days.")),
+        ("Mould & damp", "droplets", ("Worsens without ventilation; fix "
+         "leaks promptly.")),
     ]
     for i in range(0, len(sources), 3):
         cols = st.columns(3)

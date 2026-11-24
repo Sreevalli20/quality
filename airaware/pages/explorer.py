@@ -9,8 +9,8 @@ import html
 import pandas as pd
 import streamlit as st
 
-import airaware.charts as charts
-import airaware.ui as ui
+import airaware.charts as charts  # noqa: PLR0402
+import airaware.ui as ui  # noqa: PLR0402
 from airaware.aqi import (
     CATEGORIES,
     POLLUTANTS,

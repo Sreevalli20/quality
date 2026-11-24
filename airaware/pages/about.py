@@ -8,10 +8,10 @@ import html
 
 import streamlit as st
 
-import airaware.ai as ai
-import airaware.build_info as build_info
-import airaware.providers as providers
-import airaware.ui as ui
+import airaware.ai as ai  # noqa: PLR0402
+import airaware.build_info as build_info  # noqa: PLR0402
+import airaware.providers as providers  # noqa: PLR0402
+import airaware.ui as ui  # noqa: PLR0402
 
 
 def about_page():
@@ -33,17 +33,17 @@ def about_page():
     st.markdown('<div class="aw-section-title" style="font-size:1.3rem">'
                 'How your AQI is calculated</div>', unsafe_allow_html=True)
     steps = [
-        ("1", "Measure", "You provide pollutant concentrations "
+        ("1", "Measure", ("You provide pollutant concentrations "
          "(PM2.5, PM10, NO₂, SO₂, CO, O₃, NH₃) - by typing them in, "
-         "uploading a CSV, or fetching a live station reading."),
-        ("2", "Convert", "Each pollutant is mapped to a sub-index using "
+         "uploading a CSV, or fetching a live station reading.")),
+        ("2", "Convert", ("Each pollutant is mapped to a sub-index using "
          "published CPCB concentration breakpoints, with piecewise-linear "
-         "interpolation."),
-        ("3", "Combine", "The overall AQI is the <b>maximum</b> "
+         "interpolation.")),
+        ("3", "Combine", ("The overall AQI is the <b>maximum</b> "
          "sub-index - one bad pollutant sets the whole index. That "
-         "pollutant is flagged as the dominant one."),
-        ("4", "Explain", "The number becomes guidance: what to do today, "
-         "how to protect your home, and which swaps help most."),
+         "pollutant is flagged as the dominant one.")),
+        ("4", "Explain", ("The number becomes guidance: what to do today, "
+         "how to protect your home, and which swaps help most.")),
     ]
     cells = "".join(
         f'<div class="aw-kpi" style="text-align:left;padding:1rem 1.1rem">'
@@ -129,14 +129,14 @@ def about_page():
     st.markdown('<div class="aw-section-title" style="font-size:1.3rem">'
                 'Where your data comes from</div>', unsafe_allow_html=True)
     prov = [
-        ("Your entries", "user", "What you type is treated as "
-         "user-provided and unverified."),
-        ("CSV imports", "upload", "Parsed and validated locally; "
-         "nothing is uploaded anywhere."),
-        ("Sample data", "eye", "Illustrative demo values, always "
-         "labelled as samples."),
-        ("Live providers", "activity", "Fetched on demand (e.g. OpenAQ), "
-         "timestamped and station-attributed."),
+        ("Your entries", "user", ("What you type is treated as "
+         "user-provided and unverified.")),
+        ("CSV imports", "upload", ("Parsed and validated locally; "
+         "nothing is uploaded anywhere.")),
+        ("Sample data", "eye", ("Illustrative demo values, always "
+         "labelled as samples.")),
+        ("Live providers", "activity", ("Fetched on demand (e.g. OpenAQ), "
+         "timestamped and station-attributed.")),
     ]
     pcols = st.columns(2)
     for i, (name, ic, txt) in enumerate(prov):

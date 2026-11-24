@@ -37,8 +37,7 @@ def build_daily_plan(m: MeasurementSet, outdoor_pref: str = "moderate",
     """Return an ordered list of PlanItems for the day."""
     cat = m.category_name or "Good"
     heavy_ok, heavy_msg = is_outdoor_safe(cat, "heavy")
-    mod_ok, mod_msg = is_outdoor_safe(cat, "moderate")
-    light_ok, _ = is_outdoor_safe(cat, "light")
+    mod_ok, _ = is_outdoor_safe(cat, "moderate")
 
     poor_plus = cat in ("Poor", "Very Poor", "Severe", "Severe+")
     moderate_plus = cat in ("Moderate", "Poor", "Very Poor", "Severe", "Severe+")

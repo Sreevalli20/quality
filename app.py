@@ -19,18 +19,6 @@ import airaware.tzutil as tzutil  # noqa: PLR0402
 import airaware.ui as ui  # noqa: PLR0402
 from airaware.aqi import category_color
 
-NAV = [
-    "Home",
-    "Air Quality Explorer",
-    "Personal AI Assistant",
-    "My Daily Air Plan",
-    "Indoor Air Guardian",
-    "Green Lifestyle Planner",
-    "Environmental Impact",
-    "Family & Community",
-    "About & Data Sources",
-]
-
 PAGE_FN = {
     "Home": pages.home_page,
     "Air Quality Explorer": pages.explorer_page,
@@ -144,10 +132,11 @@ def _sidebar():
                             unsafe_allow_html=True)
 
     st.sidebar.markdown("---")
+    tz_name = tzutil.user_timezone_name()
     st.sidebar.selectbox(
         "Your timezone", tzutil.TZ_OPTIONS,
-        index=tzutil.TZ_OPTIONS.index(tzutil.user_timezone_name())
-        if tzutil.user_timezone_name() in tzutil.TZ_OPTIONS else 0,
+        index=tzutil.TZ_OPTIONS.index(tz_name)
+        if tz_name in tzutil.TZ_OPTIONS else 0,
         key="user_tz",
         help="Used for the daily plan's 'now' marker and the 24-hour "
              "planning outlook windows.")

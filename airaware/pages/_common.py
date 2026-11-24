@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import streamlit as st
 
-import airaware.ui as ui
+import airaware.ui as ui  # noqa: PLR0402
 from airaware.aqi import POLLUTANTS
 from airaware.data import (
     INDIAN_CITIES,

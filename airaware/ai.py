@@ -34,7 +34,7 @@ import urllib.error
 import urllib.request
 from typing import Protocol
 
-import airaware.secretsutil as secretsutil
+import airaware.secretsutil as secretsutil  # noqa: PLR0402
 
 DEFAULT_MODEL = "gemini-2.0-flash"
 _API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"

@@ -9,10 +9,10 @@ import html
 import pandas as pd
 import streamlit as st
 
-import airaware.charts as charts
-import airaware.forecast as forecast
-import airaware.tzutil as tzutil
-import airaware.ui as ui
+import airaware.charts as charts  # noqa: PLR0402
+import airaware.forecast as forecast  # noqa: PLR0402
+import airaware.tzutil as tzutil  # noqa: PLR0402
+import airaware.ui as ui  # noqa: PLR0402
 from airaware.aqi import category_color
 from airaware.data import MeasurementSet, measurement_fingerprint
 from airaware.planner import build_daily_plan, current_time_slot
@@ -38,7 +38,6 @@ def _outlook_section(m: MeasurementSet,
             else st.session_state.get("measurement_history") or [])
     outlook = forecast.build_outlook(m, history=hist)
     best = outlook.best_window
-    worst = outlook.worst_window
 
     st.markdown('<div class="aw-section-title" style="font-size:1.3rem">'
                 '24-hour planning outlook</div>', unsafe_allow_html=True)
@@ -157,7 +156,7 @@ def planner_page():
     done_count = sum(1 for dk in done_keys
                      if st.session_state.get(dk))
 
-    c1, c2 = st.columns([1, 4])
+    c1, _ = st.columns([1, 4])
     c1.button("Regenerate from current reading", key="plan_reset",
               on_click=lambda: st.session_state.update(plan_regen=True))
     st.caption("“now” marks whichever time-of-day slot contains the "

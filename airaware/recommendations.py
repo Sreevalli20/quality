@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from .aqi import is_outdoor_safe
+from .aqi import CATEGORY_NAMES, is_outdoor_safe
 from .data import MeasurementSet
 
 
@@ -61,13 +61,9 @@ GROUP_LABELS = {
     "next_steps": "F/G. Why it matters & next steps",
 }
 
-_CATEGORY_ORDER = ["Good", "Satisfactory", "Moderate", "Poor",
-                   "Very Poor", "Severe", "Severe+"]
-
-
 def _cat_index(name: str | None) -> int:
     try:
-        return _CATEGORY_ORDER.index(name or "Good")
+        return CATEGORY_NAMES.index(name or "Good")
     except ValueError:
         return 0
 

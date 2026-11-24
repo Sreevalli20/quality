@@ -8,10 +8,10 @@ import html
 
 import streamlit as st
 
-import airaware.ai as ai
-import airaware.forecast as forecast
-import airaware.report as report
-import airaware.ui as ui
+import airaware.ai as ai  # noqa: PLR0402
+import airaware.forecast as forecast  # noqa: PLR0402
+import airaware.report as report  # noqa: PLR0402
+import airaware.ui as ui  # noqa: PLR0402
 from airaware.aqi import is_outdoor_safe
 from airaware.data import MeasurementSet, measurement_fingerprint
 from airaware.recommendations import (

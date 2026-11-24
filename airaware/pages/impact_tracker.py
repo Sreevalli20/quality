@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 import pandas as pd
 import streamlit as st
 
-import airaware.ui as ui
+import airaware.ui as ui  # noqa: PLR0402
 from airaware.impact import (
     VEHICLE_FACTORS,
     ImpactAction,

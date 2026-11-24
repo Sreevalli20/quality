@@ -8,7 +8,7 @@ import html
 
 import streamlit as st
 
-import airaware.ui as ui
+import airaware.ui as ui  # noqa: PLR0402
 from airaware.planner import build_daily_plan
 
 from ._common import _meas
@@ -66,17 +66,17 @@ def community_page():
 
     ui.section_title("Community action ideas")
     ideas = [
-        ("Car-free day", "route", "One day a week where the household uses "
-         "only walking, cycling or transit."),
-        ("Neighbourhood clean-up", "trash", "Collect roadside waste before "
-         "it is burned."),
-        ("Tree drive", "tree", "Coordinate with your RWAs or school for "
-         "native saplings."),
-        ("School awareness", "book", "Share the kids' explainer with "
-         "teachers; many schools run 'clean commute' weeks."),
-        ("Report violations", "alert", "Dusty construction without "
+        ("Car-free day", "route", ("One day a week where the household uses "
+         "only walking, cycling or transit.")),
+        ("Neighbourhood clean-up", "trash", ("Collect roadside waste before "
+         "it is burned.")),
+        ("Tree drive", "tree", ("Coordinate with your RWAs or school for "
+         "native saplings.")),
+        ("School awareness", "book", ("Share the kids' explainer with "
+         "teachers; many schools run 'clean commute' weeks.")),
+        ("Report violations", "alert", ("Dusty construction without "
          "sprinkling or open garbage burning; log them on your municipal "
-         "app."),
+         "app.")),
     ]
     for i in range(0, len(ideas), 3):
         cols = st.columns(3)

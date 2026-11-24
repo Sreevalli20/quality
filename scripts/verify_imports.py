@@ -26,6 +26,7 @@ MODULES = [
     "airaware",
     "airaware.aqi",
     "airaware.tzutil",
+    "airaware.textutil",
     "airaware.data",
     "airaware.ai",
     "airaware.alerts",

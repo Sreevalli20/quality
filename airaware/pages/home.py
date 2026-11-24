@@ -8,9 +8,9 @@ import html
 
 import streamlit as st
 
-import airaware.forecast as forecast
-import airaware.providers as providers
-import airaware.ui as ui
+import airaware.forecast as forecast  # noqa: PLR0402
+import airaware.providers as providers  # noqa: PLR0402
+import airaware.ui as ui  # noqa: PLR0402
 from airaware.alerts import evaluate_alerts
 from airaware.aqi import category_color, is_outdoor_safe
 from airaware.data import SAMPLE_MEASUREMENTS, MeasurementSet
@@ -307,11 +307,11 @@ def home_page():
     ui.hr()
     ui.section_title("How it works")
     ui.journey([
-        ("gauge", "Measure", "Enter what you know, upload a report, or "
-         "explore labelled samples."),
+        ("gauge", "Measure", ("Enter what you know, upload a report, or "
+         "explore labelled samples.")),
         ("eye", "Understand", "Plain-language answers, not raw indices."),
-        ("sparkles", "Act", "Prioritised steps for today, your home and "
-         "your trips."),
+        ("sparkles", "Act", ("Prioritised steps for today, your home and "
+         "your trips.")),
     ])
 
     # ---------- personal wellness ----------

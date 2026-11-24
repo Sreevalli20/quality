@@ -47,7 +47,7 @@ class TestCsvImport:
 
     def test_basic_pollutants(self):
         csv = self._csv("location,pm25,pm10\nDelhi,55,120\nMumbai,40,80")
-        ms, warns = parse_measurements_csv(csv)
+        ms, _warns = parse_measurements_csv(csv)
         assert len(ms) == 2
         assert ms[0].source == "import"
         assert ms[0].display_aqi is not None

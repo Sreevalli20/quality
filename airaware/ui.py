@@ -12,7 +12,7 @@ import html
 
 import streamlit as st
 
-import airaware.scenes as scenes
+import airaware.scenes as scenes  # noqa: PLR0402
 
 from .aqi import category_color
 
@@ -557,9 +557,9 @@ def feature_tile(title: str, description: str, icon_name: str,
         f'<h4>{html.escape(title)}</h4>'
         f'<p>{html.escape(description)}</p></div>',
         unsafe_allow_html=True)
-    if action_key and target_page:
-        if st.button(action_label, key=action_key, width="stretch"):
-            goto(target_page)
+    if action_key and target_page and st.button(
+            action_label, key=action_key, width="stretch"):
+        goto(target_page)
 
 
 def nav_card(title: str, description: str, scene_name: str, icon_name: str,

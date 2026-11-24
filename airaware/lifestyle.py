@@ -145,15 +145,24 @@ def all_options() -> list[LifestyleOption]:
     ]
 
 
+def _score_boost_applies(cond: str, profile: UserProfile,
+                         transport_key: str) -> bool:
+    if cond == "health":
+        return "health" in profile.concerns
+    if cond == "cost":
+        return ("cost" in profile.concerns
+                or profile.budget in ("free", "low"))
+    return cond == profile.priority or cond == transport_key
+
+
 def personalised_options(profile: UserProfile) -> list[tuple[int, LifestyleOption]]:
     """Score options against the profile; returns sorted (score, option)."""
     scored: list[tuple[int, LifestyleOption]] = []
+    key_transport = f"transport_{profile.transport}"
     for opt in all_options():
-        score = 0
-        key_transport = f"transport_{profile.transport}"
-        for cond in opt.score_boost:
-            if cond == "health" and "health" in profile.concerns or cond == "cost" and ("cost" in profile.concerns or profile.budget in ("free", "low")) or cond == profile.priority or cond == key_transport:
-                score += opt.score_boost[cond]
+        score = sum(opt.score_boost[cond]
+                    for cond in opt.score_boost
+                    if _score_boost_applies(cond, profile, key_transport))
         scored.append((score, opt))
     scored.sort(key=lambda t: -t[0])
     return scored

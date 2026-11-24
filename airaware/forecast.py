@@ -32,11 +32,11 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 from . import tzutil
-from .aqi import CATEGORIES, is_outdoor_safe
+from .aqi import CATEGORY_NAMES, is_outdoor_safe
 from .data import MeasurementSet
 
 # Canonical category order used for index arithmetic.
-CAT_ORDER: list[str] = [c["name"] for c in CATEGORIES]
+CAT_ORDER: list[str] = list(CATEGORY_NAMES)
 _CAT_INDEX = {name: i for i, name in enumerate(CAT_ORDER)}
 
 # Time windows in LOCAL hours [start, end). Covers the full 24 h.

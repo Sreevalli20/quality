@@ -166,8 +166,8 @@ def category_for(aqi: float) -> dict:
     return CATEGORIES[-1]
 
 
+CATEGORY_NAMES: tuple[str, ...] = tuple(cat["name"] for cat in CATEGORIES)
 _COLOR_BY_NAME = {cat["name"]: cat["color"] for cat in CATEGORIES}
-_CATEGORY_NAMES = tuple(cat["name"] for cat in CATEGORIES)
 
 
 def category_color(name: str | None) -> str:
@@ -266,7 +266,7 @@ def is_outdoor_safe(category_name: str, activity: str = "moderate") -> tuple[boo
     activity: 'light' (walking), 'moderate' (jogging, cycling),
     'heavy' (intense exercise, sports).
     """
-    idx = _CATEGORY_NAMES.index(category_name) if category_name in _CATEGORY_NAMES else -1
+    idx = CATEGORY_NAMES.index(category_name) if category_name in CATEGORY_NAMES else -1
     if idx < 0:
         return False, "Unknown air quality category."
 
@@ -280,6 +280,6 @@ def is_outdoor_safe(category_name: str, activity: str = "moderate") -> tuple[boo
     safe = idx <= safe_idx
     if safe:
         return True, f"{category_name} conditions are acceptable for {activity} outdoor activity."
-    limit = _CATEGORY_NAMES[safe_idx]
+    limit = CATEGORY_NAMES[safe_idx]
     return False, (f"{category_name} air is not recommended for {activity} outdoor "
                    f"activity (safe up to {limit}).")

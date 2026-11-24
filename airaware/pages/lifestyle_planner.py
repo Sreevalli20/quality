@@ -9,7 +9,7 @@ import html
 
 import streamlit as st
 
-import airaware.ui as ui
+import airaware.ui as ui  # noqa: PLR0402
 from airaware.lifestyle import all_options, options_by_area, personalised_options
 
 

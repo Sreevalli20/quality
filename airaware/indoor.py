@@ -142,20 +142,20 @@ def ventilation_advice(category_name: str | None) -> tuple[str, str]:
     if clean:
         return (
             "Ventilation is helpful now",
-            "Outdoor air is relatively clean. Open windows for 10-15 minutes "
+            ("Outdoor air is relatively clean. Open windows for 10-15 minutes "
             "to flush accumulated indoor pollutants (cooking fumes, dust, "
-            "cleaning-product vapours). Cross-ventilation works best.",
+            "cleaning-product vapours). Cross-ventilation works best."),
         )
     if category_name == "Moderate":
         return (
             "Ventilate selectively",
-            "Outdoor air is Moderate. Short ventilation bursts (5-10 min) in "
+            ("Outdoor air is Moderate. Short ventilation bursts (5-10 min) in "
             "the cleanest part of the day are acceptable; otherwise rely on "
-            "filtration and recirculated air.",
+            "filtration and recirculated air."),
         )
     return (
         "Keep windows closed",
-        f"Outdoor AQI is {category_name}. Opening windows imports polluted "
+        (f"Outdoor AQI is {category_name}. Opening windows imports polluted "
         "air faster than indoor sources are removed. Use filtration "
-        "(purifier/AC filter) and recirculated air instead.",
+        "(purifier/AC filter) and recirculated air instead."),
     )

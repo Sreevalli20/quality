@@ -8,9 +8,9 @@ def _mse(cat_pollutants):
 
 
 def _profile(**kw):
-    defaults = dict(city="Delhi", lifestyle="office", transport="car",
-                    household="alone", outdoor_pref="moderate",
-                    concerns=[], budget="low", priority="health")
+    defaults = {"city": "Delhi", "lifestyle": "office", "transport": "car",
+                "household": "alone", "outdoor_pref": "moderate",
+                "concerns": [], "budget": "low", "priority": "health"}
     defaults.update(kw)
     return UserProfile(**defaults)
 

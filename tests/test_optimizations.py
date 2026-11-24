@@ -8,10 +8,7 @@ static lifestyle catalogue.
 
 from __future__ import annotations
 
-import airaware.lifestyle as lifestyle
-import airaware.providers as providers
-import airaware.recommendations as recommendations
-import airaware.secretsutil as secretsutil
+from airaware import lifestyle, providers, recommendations, secretsutil
 from airaware.data import MeasurementSet
 from airaware.recommendations import GROUP_LABELS, UserProfile
 
@@ -40,7 +37,7 @@ class TestSecretsUtil:
             return default
 
         monkeypatch.setattr(secretsutil, "secrets_get", fake)
-        import airaware.ai as ai
+        from airaware import ai
 
         ai._secrets_get("K")
         providers._secrets_get("K")
@@ -96,7 +93,7 @@ class TestGroupLabels:
             assert key in GROUP_LABELS, f"group '{key}' missing a label"
 
     def test_report_uses_shared_labels(self):
-        import airaware.report as report
+        from airaware import report
 
         m = MeasurementSet(location="Test", pollutants={"pm25": 120})
         m.finalize()

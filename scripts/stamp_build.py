@@ -32,7 +32,7 @@ def _git_sha() -> str:
             ["git", "rev-parse", "HEAD"], cwd=ROOT,
             capture_output=True, text=True, check=True)
         return out.stdout.strip()
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         return "unknown"
 
 
