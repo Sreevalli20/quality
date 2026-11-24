@@ -77,7 +77,7 @@ def _brand():
         'justify-content:center">' + ui.icon("leaf", 23) + '</div>'
         '<div><div style="font-family:Georgia,serif;font-size:1.3rem;'
         'font-weight:700;color:#173E32;line-height:1">AirAware</div>'
-        '<div style="font-size:.72rem;color:#748078;margin-top:.18rem">'
+        '<div style="font-size:.72rem;color:#5a6d5e;margin-top:.18rem">'
         'Breathe smarter. Live better.</div></div></div>',
         unsafe_allow_html=True)
 

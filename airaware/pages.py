@@ -752,7 +752,7 @@ def explorer_page():
                     f'<div class="aw-card" style="text-align:center;'
                     f'padding:.95rem .7rem">'
                     f'<div style="font-size:.7rem;font-weight:800;'
-                    f'letter-spacing:.08em;color:#748078;text-transform:'
+                    f'letter-spacing:.08em;color:#5a6d5e;text-transform:'
                     f'uppercase">{html.escape(info["name"])}{dom_mark}</div>'
                     f'<div style="font-size:1.35rem;font-weight:800;'
                     f'color:{c};font-family:var(--serif);margin:.1rem 0">'
@@ -761,7 +761,7 @@ def explorer_page():
                     f'background:#eef1e6;overflow:hidden;margin:.3rem 0 .5rem">'
                     f'<div style="height:100%;width:{bar_pct:.0f}%;'
                     f'background:{c};border-radius:3px"></div></div>'
-                    f'<div style="font-size:.74rem;color:#748078">'
+                    f'<div style="font-size:.74rem;color:#5a6d5e">'
                     f'{r.concentration:g} {r.unit} · {info["period"]}</div>'
                     f'</div>', unsafe_allow_html=True)
 

@@ -19,7 +19,7 @@ _CSS = """
 :root {
   --forest:#173E32; --forest-2:#1f5040; --evergreen:#245B46;
   --sage:#A8BCA3; --sage-soft:#d3dfc9; --ivory:#F8F7F0; --mint:#E8F0E6;
-  --charcoal:#26352E; --muted:#6d7f72; --line:#e4e8dd;
+  --charcoal:#26352E; --muted:#5a6d5e; --line:#e4e8dd;
   --card:#ffffff; --warn:#b45309; --bad:#b91c1c; --good:#15803d;
   --gold:#c9a24b; --sky:#7fa8b8;
   --shadow:0 1px 2px rgba(23,62,50,.05),0 8px 24px rgba(23,62,50,.07);
@@ -866,26 +866,26 @@ def hero_art() -> str:
 
 def floating_aqi_card(aqi: float, category: str, label: str = "Demo reading") -> str:
     """Small floating AQI chip rendered over hero artwork."""
-    color = category_color(category) if category else "#748078"
+    color = category_color(category) if category else "#5a6d5e"
     return (
         f'<div style="position:absolute;right:18px;bottom:18px;'
         f'background:#fff;border-radius:16px;padding:.9rem 1.1rem;'
         f'box-shadow:0 12px 34px rgba(21,61,50,.3);min-width:180px;'
         f'border:1px solid var(--line)">'
         f'<div style="font-size:.66rem;font-weight:800;letter-spacing:.1em;'
-        f'text-transform:uppercase;color:#748078">{html.escape(label)}</div>'
+        f'text-transform:uppercase;color:#5a6d5e">{html.escape(label)}</div>'
         f'<div style="display:flex;align-items:baseline;gap:.4rem;margin-top:.2rem">'
         f'<span style="font-size:1.8rem;font-weight:800;color:{color};'
         f'font-family:var(--serif)">{aqi:.0f}</span>'
         f'<span style="font-size:.82rem;font-weight:700;color:{color}">'
         f'{html.escape(category)}</span></div>'
-        f'<div style="font-size:.7rem;color:#748078;margin-top:.2rem">'
+        f'<div style="font-size:.7rem;color:#5a6d5e;margin-top:.2rem">'
         'Illustrative sample · not a live reading</div></div>')
 
 
 def aqi_ring(aqi: float, category: str, size: int = 150) -> str:
     """Circular AQI gauge rendered with pure CSS/SVG (no external assets)."""
-    color = category_color(category) if category else "#748078"
+    color = category_color(category) if category else "#5a6d5e"
     pct = max(0.0, min(aqi / 500.0, 1.0))
     r = 62
     c = 2 * 3.14159 * r
