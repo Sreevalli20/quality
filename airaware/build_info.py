@@ -4,7 +4,7 @@ Do not edit by hand; re-run the script before deploying.
 """
 
 APP_VERSION = "1.0.0"
-GIT_SHA = "99c0dde5971493ffa0e8bc076ff1b6831f53f2cc"
-BUILD_ID = "20261124-99c0dde"
-BUILT_AT = "2026-11-24 07:36 UTC"
-SOURCE_HASH = "c0464c3547ebf474"
+GIT_SHA = "d23c92aed9e8f716ac80e3dc8ca168a27ead73a6"
+BUILD_ID = "20261124-d23c92a"
+BUILT_AT = "2026-11-24 08:27 UTC"
+SOURCE_HASH = "73521e779a8e3816"
