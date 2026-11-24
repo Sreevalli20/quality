@@ -333,7 +333,18 @@ of writing, Streamlit Community Cloud's default runtime is an earlier 3.x;
 if the platform does not offer 3.14, the app is expected to run on 3.11+
 (the code uses only stable, broadly compatible features), but this has not
 been verified on the live platform — check the deployed app's runtime before
-submission and disclose any mismatch honestly.
+submission and disclose any mismatch honestly. The full suite (including
+fresh-process import checks and Streamlit `AppTest` runs of all nine
+pages) passes on both Python 3.14.10 and 3.12.x with Streamlit 1.67.
+
+**Pre-deploy verification:** run `python scripts/verify_imports.py` — it
+imports every module in a fresh interpreter, checks `sys.modules`
+registration, dataclass construction and reload cycles. If a deployment
+fails with `KeyError: 'airaware.*'` or a `dataclasses` `AttributeError`,
+the running build is stale or partial: confirm the **About & Data
+Sources** page shows `BUILD_ID`/`GIT_SHA` matching the latest commit,
+then delete and recreate the Streamlit Cloud app (Community Cloud caches
+builds per app) rather than patching imports.
 
 ## Security & privacy
 
